@@ -99,7 +99,7 @@ class Engine():
         if self.units == "SI":
             self.__Rbar = 8314  # [kJ/Kmol-K]
             self.__g0 = 9.81  # m/s^2
-        else if self.units == "Imperial":
+        elif self.units == "Imperial":
             self.__Rbar = 1545  # [ft-lbf/lbmol-R]
             self.__g0 = 32.17  # ft/s^2
 
