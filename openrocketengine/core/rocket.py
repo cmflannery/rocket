@@ -86,18 +86,22 @@ class Engine():
             self.contraction_angle = contraction_angle  # in degrees
         else:
             self.contraction_angle = 60 # degrees
-        
+
         if bell_length is not None:
             self.bell_length = bell_length
         else:
             self.bell_length = 0.8
-        
+
         if self.pa is None:
             self.pa = self.pe
 
         # set constants
-        self.__Rbar = 8314  # [kJ/Kmol-K]
-        self.__g0 = 9.81  # m/s^2
+        if self.units == "SI":
+            self.__Rbar = 8314  # [kJ/Kmol-K]
+            self.__g0 = 9.81  # m/s^2
+        else if self.units == "Imperial":
+            self.__Rbar = 1545  # [ft-lbf/lbmol-R]
+            self.__g0 = 32.17  # ft/s^2
 
 
     @property
@@ -606,5 +610,3 @@ class Engine():
         geometryWorksheet.write('C14', Units[self.units]['volume'])
         geometryWorksheet.write('C15', Units[self.units]['length'])
         geometryWorksheet.write('C16', Units[self.units]['length'])
-
-
