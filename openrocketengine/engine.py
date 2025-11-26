@@ -148,13 +148,12 @@ class EngineInputs:
         contraction_angle: float = 45.0,
         bell_fraction: float = 0.8,
         name: str | None = None,
-        use_cea: bool = True,
     ) -> "EngineInputs":
         """Create EngineInputs from propellant names, automatically computing thermochemistry.
 
-        This factory method uses RocketCEA (if available) or a built-in database
-        to determine the combustion properties (chamber temperature, molecular weight,
-        and gamma) from the specified propellant combination.
+        This factory method uses RocketCEA (NASA CEA) to determine the combustion
+        properties (chamber temperature, molecular weight, and gamma) from the
+        specified propellant combination.
 
         Args:
             oxidizer: Oxidizer name (e.g., "LOX", "N2O4", "N2O", "H2O2")
@@ -169,7 +168,6 @@ class EngineInputs:
             contraction_angle: Convergent section half-angle [deg]. Default 45.
             bell_fraction: Bell length as fraction of 15° cone. Default 0.8.
             name: Optional engine name.
-            use_cea: If True, use RocketCEA when available. Default True.
 
         Returns:
             EngineInputs with thermochemistry computed from propellant combination.
@@ -187,8 +185,6 @@ class EngineInputs:
         from openrocketengine.propellants import (
             get_combustion_properties,
             get_optimal_mixture_ratio,
-            is_cea_available,
-            _normalize_propellant_name,
         )
 
         # Default exit pressure to 1 atm
@@ -204,37 +200,19 @@ class EngineInputs:
 
         # Find optimal mixture ratio if not specified
         if mixture_ratio is None:
-            if is_cea_available() and use_cea:
-                mixture_ratio, _ = get_optimal_mixture_ratio(
-                    oxidizer=oxidizer,
-                    fuel=fuel,
-                    chamber_pressure_pa=pc_pa,
-                    metric="isp",
-                )
-            else:
-                # Use typical values for common propellants
-                defaults = {
-                    ("LOX", "LH2"): 6.0,
-                    ("LOX", "RP1"): 2.7,
-                    ("LOX", "CH4"): 3.2,
-                    ("LOX", "Ethanol"): 1.5,
-                    ("N2O4", "MMH"): 2.0,
-                    ("N2O4", "UDMH"): 2.2,
-                    ("N2O4", "A-50"): 2.0,
-                    ("N2O", "Ethanol"): 5.0,
-                    ("H2O2", "RP1"): 7.5,
-                }
-                ox_norm = _normalize_propellant_name(oxidizer, is_oxidizer=True)
-                fuel_norm = _normalize_propellant_name(fuel, is_oxidizer=False)
-                mixture_ratio = defaults.get((ox_norm, fuel_norm), 2.5)
+            mixture_ratio, _ = get_optimal_mixture_ratio(
+                oxidizer=oxidizer,
+                fuel=fuel,
+                chamber_pressure_pa=pc_pa,
+                metric="isp",
+            )
 
-        # Get combustion properties
+        # Get combustion properties from CEA
         props = get_combustion_properties(
             oxidizer=oxidizer,
             fuel=fuel,
             mixture_ratio=mixture_ratio,
             chamber_pressure_pa=pc_pa,
-            use_cea=use_cea,
         )
 
         # Generate name if not provided

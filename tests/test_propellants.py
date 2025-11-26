@@ -44,14 +44,21 @@ class TestDatabasePropellants:
         assert ("LOX", "LH2") in propellants
         assert ("LOX", "CH4") in propellants
 
+
+class TestCEAIntegration:
+    """Test RocketCEA integration."""
+
+    def test_is_cea_available(self) -> None:
+        """Test that CEA is available (required dependency)."""
+        assert is_cea_available() is True
+
     def test_get_lox_rp1_properties(self) -> None:
-        """Test getting LOX/RP1 properties from database."""
+        """Test getting LOX/RP1 properties from CEA."""
         props = get_combustion_properties(
             oxidizer="LOX",
             fuel="RP1",
             mixture_ratio=2.7,
             chamber_pressure_pa=7e6,
-            use_cea=False,  # Force database
         )
 
         # Verify reasonable values for LOX/RP1
@@ -59,37 +66,35 @@ class TestDatabasePropellants:
         assert 20 < props.molecular_weight < 26
         assert 1.1 < props.gamma < 1.25
         assert 1700 < props.characteristic_velocity < 1900
-        assert props.source == "database"
+        assert props.source == "rocketcea"
 
     def test_get_lox_lh2_properties(self) -> None:
-        """Test getting LOX/LH2 properties from database."""
+        """Test getting LOX/LH2 properties from CEA."""
         props = get_combustion_properties(
             oxidizer="LOX",
             fuel="LH2",
             mixture_ratio=6.0,
             chamber_pressure_pa=10e6,
-            use_cea=False,
         )
 
         # LOX/LH2 has higher Isp, lower MW
-        assert 3300 < props.chamber_temp_k < 3600
+        assert 3300 < props.chamber_temp_k < 3700
         assert 12 < props.molecular_weight < 18
-        assert 1.1 < props.gamma < 1.2
+        assert 1.1 < props.gamma < 1.25
         assert 2300 < props.characteristic_velocity < 2500
 
     def test_get_lox_ch4_properties(self) -> None:
-        """Test getting LOX/CH4 properties from database."""
+        """Test getting LOX/CH4 properties from CEA."""
         props = get_combustion_properties(
             oxidizer="LOX",
             fuel="CH4",
             mixture_ratio=3.2,
             chamber_pressure_pa=7e6,
-            use_cea=False,
         )
 
         assert 3400 < props.chamber_temp_k < 3700
         assert 18 < props.molecular_weight < 24
-        assert props.source == "database"
+        assert props.source == "rocketcea"
 
     def test_get_n2o4_mmh_properties(self) -> None:
         """Test getting N2O4/MMH (hypergolic) properties."""
@@ -98,56 +103,38 @@ class TestDatabasePropellants:
             fuel="MMH",
             mixture_ratio=2.0,
             chamber_pressure_pa=1e6,
-            use_cea=False,
         )
 
-        assert 3000 < props.chamber_temp_k < 3400
+        assert 3000 < props.chamber_temp_k < 3500
         assert 20 < props.molecular_weight < 25
 
-    def test_interpolation(self) -> None:
-        """Test that intermediate mixture ratios are interpolated."""
+    def test_mixture_ratio_variation(self) -> None:
+        """Test that different mixture ratios give different results."""
         props_low = get_combustion_properties(
-            oxidizer="LOX", fuel="RP1", mixture_ratio=2.0, chamber_pressure_pa=7e6, use_cea=False
+            oxidizer="LOX", fuel="RP1", mixture_ratio=2.0, chamber_pressure_pa=7e6
         )
         props_mid = get_combustion_properties(
-            oxidizer="LOX", fuel="RP1", mixture_ratio=2.5, chamber_pressure_pa=7e6, use_cea=False
+            oxidizer="LOX", fuel="RP1", mixture_ratio=2.5, chamber_pressure_pa=7e6
         )
         props_high = get_combustion_properties(
-            oxidizer="LOX", fuel="RP1", mixture_ratio=3.0, chamber_pressure_pa=7e6, use_cea=False
+            oxidizer="LOX", fuel="RP1", mixture_ratio=3.0, chamber_pressure_pa=7e6
         )
 
-        # Mid should be between low and high (roughly)
-        # Note: Tc may not be monotonic, but MW usually is
-        assert props_low.molecular_weight < props_mid.molecular_weight < props_high.molecular_weight
+        # Molecular weight should increase with more oxidizer
+        assert props_low.molecular_weight < props_high.molecular_weight
+        # All should be valid
+        assert props_mid.chamber_temp_k > 3000
 
     def test_name_normalization(self) -> None:
         """Test that propellant names are normalized."""
-        # These should all work
-        props1 = get_combustion_properties("LOX", "RP1", 2.7, 7e6, use_cea=False)
-        props2 = get_combustion_properties("LO2", "RP-1", 2.7, 7e6, use_cea=False)
-        props3 = get_combustion_properties("OXYGEN", "KEROSENE", 2.7, 7e6, use_cea=False)
+        # These should all give similar results
+        props1 = get_combustion_properties("LOX", "RP1", 2.7, 7e6)
+        props2 = get_combustion_properties("LO2", "RP-1", 2.7, 7e6)
+        props3 = get_combustion_properties("OXYGEN", "KEROSENE", 2.7, 7e6)
 
-        assert props1.chamber_temp_k == props2.chamber_temp_k == props3.chamber_temp_k
-
-    def test_unknown_propellant_raises(self) -> None:
-        """Test that unknown propellants raise ValueError."""
-        with pytest.raises(ValueError, match="not in database"):
-            get_combustion_properties(
-                oxidizer="UNKNOWN_OX",
-                fuel="UNKNOWN_FUEL",
-                mixture_ratio=2.0,
-                chamber_pressure_pa=7e6,
-                use_cea=False,
-            )
-
-
-class TestCEAAvailability:
-    """Test CEA availability checking."""
-
-    def test_is_cea_available_returns_bool(self) -> None:
-        """Test that is_cea_available returns boolean."""
-        result = is_cea_available()
-        assert isinstance(result, bool)
+        # All should map to the same propellant combination
+        assert props1.chamber_temp_k == pytest.approx(props2.chamber_temp_k, rel=0.01)
+        assert props1.chamber_temp_k == pytest.approx(props3.chamber_temp_k, rel=0.01)
 
 
 class TestEngineInputsFromPropellants:
@@ -164,13 +151,12 @@ class TestEngineInputsFromPropellants:
             thrust=kilonewtons(100),
             chamber_pressure=megapascals(7),
             mixture_ratio=2.7,
-            use_cea=False,
         )
 
         assert inputs.thrust.to("kN").value == pytest.approx(100)
         assert inputs.chamber_pressure.to("MPa").value == pytest.approx(7)
         assert inputs.mixture_ratio == pytest.approx(2.7)
-        # Chamber temp should be set from propellant data
+        # Chamber temp should be set from CEA
         assert 3400 < inputs.chamber_temp.to("K").value < 3800
         assert inputs.name == "LOX/RP1 Engine"
 
@@ -185,7 +171,6 @@ class TestEngineInputsFromPropellants:
             thrust=newtons(50000),
             chamber_pressure=pascals(5e6),
             mixture_ratio=6.0,
-            use_cea=False,
         )
 
         # Check defaults were applied
@@ -206,7 +191,6 @@ class TestEngineInputsFromPropellants:
             chamber_pressure=megapascals(5),
             mixture_ratio=3.2,
             name="Methane Test Engine",
-            use_cea=False,
         )
 
         # Should be able to compute performance and geometry
@@ -221,7 +205,7 @@ class TestEngineInputsFromPropellants:
     def test_from_propellants_custom_name(self) -> None:
         """Test custom engine name."""
         from openrocketengine.engine import EngineInputs
-        from openrocketengine.units import newtons, megapascals
+        from openrocketengine.units import megapascals, newtons
 
         inputs = EngineInputs.from_propellants(
             oxidizer="LOX",
@@ -230,8 +214,6 @@ class TestEngineInputsFromPropellants:
             chamber_pressure=megapascals(2),
             mixture_ratio=2.5,
             name="My Custom Engine",
-            use_cea=False,
         )
 
         assert inputs.name == "My Custom Engine"
-

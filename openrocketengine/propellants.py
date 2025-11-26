@@ -1,14 +1,8 @@
 """Propellant thermochemistry module for OpenRocketEngine.
 
-This module provides:
-1. Integration with RocketCEA for accurate combustion analysis
-2. A fallback propellant database for common combinations when CEA is unavailable
-3. Propellant property calculations
-
-RocketCEA is an optional dependency. When installed, it provides accurate
-thermochemistry calculations using NASA's Chemical Equilibrium with Applications
-(CEA) code. When not available, the module falls back to tabulated data for
-common propellant combinations.
+This module provides combustion thermochemistry calculations using NASA CEA
+via RocketCEA. It computes chamber temperature, molecular weight, gamma,
+and other properties needed for rocket engine performance analysis.
 
 Example:
     >>> from openrocketengine.propellants import get_combustion_properties
@@ -25,18 +19,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from beartype import beartype
-
-# Check if RocketCEA is available
-try:
-    from rocketcea.cea_obj import CEA_Obj
-    from rocketcea.cea_obj_w_units import CEA_Obj as CEA_Obj_W_Units
-
-    ROCKETCEA_AVAILABLE = True
-except ImportError:
-    ROCKETCEA_AVAILABLE = False
-    CEA_Obj = None
-    CEA_Obj_W_Units = None
-
+from rocketcea.cea_obj import CEA_Obj
 
 # =============================================================================
 # Data Structures
@@ -266,8 +249,6 @@ def _get_properties_from_cea(
     chamber_pressure_pa: float,
 ) -> CombustionProperties:
     """Get combustion properties using RocketCEA."""
-    if not ROCKETCEA_AVAILABLE:
-        raise RuntimeError("RocketCEA is not installed")
 
     # Convert pressure to psia (RocketCEA default)
     pc_psia = chamber_pressure_pa / 6894.76
@@ -396,22 +377,10 @@ def get_combustion_properties(
         ... )
         >>> print(f"Tc = {props.chamber_temp_k:.0f} K, gamma = {props.gamma:.3f}")
     """
-    if use_cea and ROCKETCEA_AVAILABLE:
-        try:
-            return _get_properties_from_cea(
-                oxidizer, fuel, mixture_ratio, chamber_pressure_pa
-            )
-        except Exception as e:
-            # Fall back to database if CEA fails
-            import warnings
-
-            warnings.warn(
-                f"RocketCEA calculation failed: {e}. Falling back to database.",
-                stacklevel=2,
-            )
-            return _get_properties_from_database(
-                oxidizer, fuel, mixture_ratio, chamber_pressure_pa
-            )
+    if use_cea:
+        return _get_properties_from_cea(
+            oxidizer, fuel, mixture_ratio, chamber_pressure_pa
+        )
     else:
         return _get_properties_from_database(
             oxidizer, fuel, mixture_ratio, chamber_pressure_pa
@@ -423,9 +392,9 @@ def is_cea_available() -> bool:
     """Check if RocketCEA is installed and available.
 
     Returns:
-        True if RocketCEA can be imported, False otherwise
+        Always True (RocketCEA is a required dependency)
     """
-    return ROCKETCEA_AVAILABLE
+    return True
 
 
 @beartype
@@ -467,12 +436,6 @@ def get_optimal_mixture_ratio(
     Raises:
         RuntimeError: If RocketCEA is not installed
     """
-    if not ROCKETCEA_AVAILABLE:
-        raise RuntimeError(
-            "Mixture ratio optimization requires RocketCEA. "
-            "Install with: pip install rocketcea"
-        )
-
     pc_psia = chamber_pressure_pa / 6894.76
     ox_name = _normalize_propellant_name(oxidizer, is_oxidizer=True)
     fuel_name = _normalize_propellant_name(fuel, is_oxidizer=False)

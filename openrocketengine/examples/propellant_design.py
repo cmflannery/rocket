@@ -7,14 +7,9 @@ propellants and the library automatically determines combustion properties.
 No need to manually look up Tc, gamma, or molecular weight!
 """
 
-from openrocketengine import (
-    design_engine,
-    is_cea_available,
-    list_database_propellants,
-    plot_engine_dashboard,
-)
+from openrocketengine import design_engine, plot_engine_dashboard
 from openrocketengine.engine import EngineInputs
-from openrocketengine.nozzle import generate_nozzle_from_geometry, full_chamber_contour
+from openrocketengine.nozzle import full_chamber_contour, generate_nozzle_from_geometry
 from openrocketengine.units import kilonewtons, megapascals
 
 
@@ -24,19 +19,7 @@ def main() -> None:
     print("OpenRocketEngine - Propellant-Based Design")
     print("=" * 70)
     print()
-
-    # Check if RocketCEA is available
-    if is_cea_available():
-        print("RocketCEA is installed - using NASA CEA for thermochemistry")
-    else:
-        print("RocketCEA not installed - using built-in propellant database")
-        print("  Install with: pip install rocketcea")
-    print()
-
-    # Show available propellant combinations in the database
-    print("Available propellant combinations (no CEA required):")
-    for ox, fuel in list_database_propellants():
-        print(f"  - {ox} / {fuel}")
+    print("Using NASA CEA (via RocketCEA) for thermochemistry calculations")
     print()
 
     # =========================================================================
@@ -59,7 +42,7 @@ def main() -> None:
     )
 
     print(f"Engine: {lox_rp1.name}")
-    print(f"  Propellants: LOX / RP-1")
+    print("  Propellants: LOX / RP-1")
     print(f"  Mixture Ratio: {lox_rp1.mixture_ratio}")
     print(f"  Chamber Temp: {lox_rp1.chamber_temp.to('K').value:.0f} K (auto-calculated!)")
     print(f"  Gamma: {lox_rp1.gamma:.3f} (auto-calculated!)")
@@ -67,13 +50,13 @@ def main() -> None:
     print()
 
     perf1, geom1 = design_engine(lox_rp1)
-    print(f"Performance:")
+    print("Performance:")
     print(f"  Isp (SL): {perf1.isp.value:.1f} s")
     print(f"  Isp (Vac): {perf1.isp_vac.value:.1f} s")
     print(f"  Thrust Coeff: {perf1.thrust_coeff:.3f}")
     print(f"  Mass Flow: {perf1.mdot.value:.2f} kg/s")
     print()
-    print(f"Geometry:")
+    print("Geometry:")
     print(f"  Throat Diameter: {geom1.throat_diameter.to('m').value * 100:.1f} cm")
     print(f"  Exit Diameter: {geom1.exit_diameter.to('m').value * 100:.1f} cm")
     print(f"  Expansion Ratio: {geom1.expansion_ratio:.1f}")
@@ -103,7 +86,7 @@ def main() -> None:
     print()
 
     perf2, geom2 = design_engine(lox_ch4)
-    print(f"Performance:")
+    print("Performance:")
     print(f"  Isp (SL): {perf2.isp.value:.1f} s")
     print(f"  Isp (Vac): {perf2.isp_vac.value:.1f} s")
     print()
@@ -132,7 +115,7 @@ def main() -> None:
     print()
 
     perf3, geom3 = design_engine(lox_lh2)
-    print(f"Performance:")
+    print("Performance:")
     print(f"  Isp (SL): {perf3.isp.value:.1f} s")
     print(f"  Isp (Vac): {perf3.isp_vac.value:.1f} s  <- Highest!")
     print()
