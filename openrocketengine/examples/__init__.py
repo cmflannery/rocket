@@ -1,2 +1,0 @@
-"""Example scripts for OpenRocketEngine."""
-

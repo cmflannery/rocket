@@ -3,7 +3,7 @@
 
 import pytest
 
-from openrocketengine.units import (
+from rocket.units import (
     Quantity,
     atmospheres,
     bar,

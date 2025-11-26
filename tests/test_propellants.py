@@ -2,7 +2,7 @@
 
 import pytest
 
-from openrocketengine.propellants import (
+from rocket.propellants import (
     CombustionProperties,
     get_combustion_properties,
     is_cea_available,
@@ -142,8 +142,8 @@ class TestEngineInputsFromPropellants:
 
     def test_from_propellants_basic(self) -> None:
         """Test basic from_propellants usage."""
-        from openrocketengine.engine import EngineInputs
-        from openrocketengine.units import kilonewtons, megapascals
+        from rocket.engine import EngineInputs
+        from rocket.units import kilonewtons, megapascals
 
         inputs = EngineInputs.from_propellants(
             oxidizer="LOX",
@@ -162,8 +162,8 @@ class TestEngineInputsFromPropellants:
 
     def test_from_propellants_with_defaults(self) -> None:
         """Test from_propellants with default parameters."""
-        from openrocketengine.engine import EngineInputs
-        from openrocketengine.units import newtons, pascals
+        from rocket.engine import EngineInputs
+        from rocket.units import newtons, pascals
 
         inputs = EngineInputs.from_propellants(
             oxidizer="LOX",
@@ -181,8 +181,8 @@ class TestEngineInputsFromPropellants:
 
     def test_from_propellants_full_workflow(self) -> None:
         """Test complete workflow from propellants to geometry."""
-        from openrocketengine.engine import EngineInputs, design_engine
-        from openrocketengine.units import kilonewtons, megapascals
+        from rocket.engine import EngineInputs, design_engine
+        from rocket.units import kilonewtons, megapascals
 
         inputs = EngineInputs.from_propellants(
             oxidizer="LOX",
@@ -204,8 +204,8 @@ class TestEngineInputsFromPropellants:
 
     def test_from_propellants_custom_name(self) -> None:
         """Test custom engine name."""
-        from openrocketengine.engine import EngineInputs
-        from openrocketengine.units import megapascals, newtons
+        from rocket.engine import EngineInputs
+        from rocket.units import megapascals, newtons
 
         inputs = EngineInputs.from_propellants(
             oxidizer="LOX",
