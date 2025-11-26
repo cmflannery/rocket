@@ -1094,6 +1094,35 @@ class ParetoResults:
         """Number of Pareto-optimal points."""
         return len(self.pareto_indices)
 
+    @property
+    def n_total(self) -> int:
+        """Total number of designs evaluated."""
+        return len(self.all_results.inputs)
+
+    @property
+    def n_feasible(self) -> int:
+        """Number of designs that passed all constraints."""
+        return self.all_results.n_feasible
+
+    def pareto_front(self) -> pl.DataFrame:
+        """Get Pareto-optimal designs as a DataFrame.
+
+        Returns:
+            DataFrame with parameters and metrics for Pareto-optimal points
+        """
+        # Extract metrics for Pareto points only
+        pareto_metrics: dict[str, list[Any]] = {}
+
+        # Add parameters
+        for param_name, param_values in self.all_results.parameters.items():
+            pareto_metrics[param_name] = [param_values[i] for i in self.pareto_indices]
+
+        # Add metrics
+        for metric_name, metric_values in self.all_results.metrics.items():
+            pareto_metrics[metric_name] = [metric_values[i] for i in self.pareto_indices]
+
+        return pl.DataFrame(pareto_metrics)
+
     def get_best(self, objective: str) -> tuple[Any, Any, float]:
         """Get the best design for a specific objective.
 
