@@ -1,4 +1,4 @@
-"""Engine module for OpenRocketEngine.
+"""Engine module for Rocket.
 
 This module provides the core data structures and computation functions for
 rocket engine design and analysis.

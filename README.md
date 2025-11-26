@@ -1,8 +1,8 @@
-# OpenRocketEngine
+# Rocket
 
 ![Python package](https://github.com/cmflannery/openrocketengine/workflows/Python%20package/badge.svg)
 
-Tools for liquid rocket engine design and analysis.
+Tools for rocket vehicle design and analysis.
 
 ## Installation
 
@@ -16,14 +16,14 @@ brew install gcc
 sudo apt-get install gfortran
 
 # Then install
-pip install openrocketengine
+pip install rocket
 ```
 
 ## Quick Start
 
 ```python
-from openrocketengine import EngineInputs, design_engine, plot_engine_dashboard
-from openrocketengine.units import kilonewtons, megapascals
+from rocket import EngineInputs, design_engine, plot_engine_dashboard
+from rocket.units import kilonewtons, megapascals
 
 # Design from propellant selection (thermochemistry auto-calculated)
 inputs = EngineInputs.from_propellants(
@@ -50,9 +50,19 @@ plot_engine_dashboard(inputs, performance, geometry)
 - **Type-safe**: Runtime type checking with beartype
 - **Units handling**: Built-in `Quantity` class prevents unit errors
 - **Fast**: Numba-accelerated isentropic flow calculations
-- **Visualization**: Engine cross-sections, performance curves, dashboards
 - **NASA CEA**: Accurate thermochemistry via RocketCEA
+- **Visualization**: Engine cross-sections, performance curves, dashboards
 - **Nozzle contours**: Rao bell and conical nozzle generation with CSV export
+
+## Modules
+
+- `rocket.engine` - Engine design and performance analysis
+- `rocket.nozzle` - Nozzle contour generation
+- `rocket.units` - Physical quantity handling with units
+- `rocket.plotting` - Visualization tools
+- `rocket.propellants` - NASA CEA thermochemistry integration
+- `rocket.tanks` - Propellant and tank sizing (coming soon)
+
 
 ## References
 

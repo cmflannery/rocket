@@ -1,2 +1,2 @@
-"""Example scripts for OpenRocketEngine."""
+"""Example scripts for Rocket."""
 

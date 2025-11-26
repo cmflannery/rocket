@@ -5,6 +5,7 @@ import pytest
 from rocket.propellants import (
     CombustionProperties,
     get_combustion_properties,
+    get_optimal_mixture_ratio,
     is_cea_available,
     list_database_propellants,
 )
@@ -30,6 +31,7 @@ class TestCombustionProperties:
         assert props.chamber_temp_k == 3500.0
         assert props.gamma == 1.2
         assert props.source == "test"
+
 
 
 class TestDatabasePropellants:
@@ -135,6 +137,38 @@ class TestCEAIntegration:
         # All should map to the same propellant combination
         assert props1.chamber_temp_k == pytest.approx(props2.chamber_temp_k, rel=0.01)
         assert props1.chamber_temp_k == pytest.approx(props3.chamber_temp_k, rel=0.01)
+
+
+class TestOptimalMixtureRatio:
+    """Test mixture ratio optimization."""
+
+    def test_optimal_mr_lox_rp1(self) -> None:
+        """Test finding optimal MR for LOX/RP1."""
+        mr, isp = get_optimal_mixture_ratio(
+            oxidizer="LOX",
+            fuel="RP1",
+            chamber_pressure_pa=7e6,
+            expansion_ratio=40.0,
+            metric="isp",
+        )
+
+        # Optimal MR for LOX/RP1 is around 2.3-2.8
+        assert 2.0 < mr < 3.0
+        assert isp > 300  # Reasonable Isp in seconds
+
+    def test_optimal_mr_lox_lh2(self) -> None:
+        """Test finding optimal MR for LOX/LH2."""
+        mr, isp = get_optimal_mixture_ratio(
+            oxidizer="LOX",
+            fuel="LH2",
+            chamber_pressure_pa=10e6,
+            expansion_ratio=40.0,
+            metric="isp",
+        )
+
+        # Optimal MR for LOX/LH2 is around 5-7
+        assert 4.0 < mr < 8.0
+        assert isp > 400  # High Isp for hydrolox
 
 
 class TestEngineInputsFromPropellants:

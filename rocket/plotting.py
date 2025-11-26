@@ -1,4 +1,4 @@
-"""Visualization module for OpenRocketEngine.
+"""Visualization module for Rocket.
 
 Provides plotting functions for:
 - Engine cross-section views
@@ -24,11 +24,6 @@ from rocket.engine import (
     EnginePerformance,
     isp_at_altitude,
     thrust_at_altitude,
-)
-from rocket.isentropic import (
-    area_ratio_from_mach,
-    mach_from_pressure_ratio,
-    thrust_coefficient,
 )
 from rocket.nozzle import NozzleContour
 from rocket.units import pascals
@@ -452,6 +447,12 @@ def plot_isp_vs_expansion_ratio(
     Returns:
         matplotlib Figure
     """
+    from rocket.isentropic import (
+        area_ratio_from_mach,
+        mach_from_pressure_ratio,
+        thrust_coefficient,
+    )
+
     _setup_style()
 
     fig, ax = plt.subplots(figsize=figsize)
@@ -665,7 +666,7 @@ def plot_engine_dashboard(
 
 @beartype
 def plot_mass_breakdown(
-    masses: dict[str, float],
+    masses: dict[str, float | int],
     title: str = "Mass Breakdown",
     figsize: tuple[float, float] = (10, 8),
 ) -> Figure:

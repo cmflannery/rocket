@@ -1,4 +1,4 @@
-"""Propellant thermochemistry module for OpenRocketEngine.
+"""Propellant thermochemistry module for Rocket.
 
 This module provides combustion thermochemistry calculations using NASA CEA
 via RocketCEA. It computes chamber temperature, molecular weight, gamma,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Basic engine design example for OpenRocketEngine.
+"""Basic engine design example for Rocket.
 
 This example demonstrates the complete workflow for designing a small
 liquid rocket engine:
@@ -38,7 +38,7 @@ from rocket.units import kelvin, megapascals, meters, newtons, pascals
 def main() -> None:
     """Run the basic engine design example."""
     print("=" * 70)
-    print("OpenRocketEngine - Basic Engine Design Example")
+    print("Rocket - Basic Engine Design Example")
     print("=" * 70)
     print()
 
