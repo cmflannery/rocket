@@ -22,8 +22,8 @@ import numpy as np
 from beartype import beartype
 from numpy.typing import NDArray
 
-from openrocketengine.engine import EngineGeometry, EngineInputs
-from openrocketengine.units import Quantity
+from rocket.engine import EngineGeometry, EngineInputs
+from rocket.units import Quantity
 
 # =============================================================================
 # Nozzle Contour Data Structure

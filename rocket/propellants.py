@@ -1,11 +1,11 @@
-"""Propellant thermochemistry module for OpenRocketEngine.
+"""Propellant thermochemistry module for Rocket.
 
 This module provides combustion thermochemistry calculations using NASA CEA
 via RocketCEA. It computes chamber temperature, molecular weight, gamma,
 and other properties needed for rocket engine performance analysis.
 
 Example:
-    >>> from openrocketengine.propellants import get_combustion_properties
+    >>> from rocket.propellants import get_combustion_properties
     >>> props = get_combustion_properties(
     ...     oxidizer="LOX",
     ...     fuel="RP1",

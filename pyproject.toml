@@ -1,14 +1,14 @@
 [project]
-name = "openrocketengine"
-version = "0.2.0"
-description = "OpenRocketEngine - Tools for liquid rocket engine design and analysis"
+name = "rocket"
+version = "0.3.0"
+description = "Rocket - Tools for rocket vehicle design and analysis"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
     { name = "Cameron Flannery" }
 ]
-keywords = ["rocket", "propulsion", "aerospace", "engineering", "nozzle"]
+keywords = ["rocket", "propulsion", "aerospace", "engineering", "nozzle", "tanks", "vehicle"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -37,9 +37,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/openrocketengine/openrocketengine"
-Documentation = "https://openrocketengine.readthedocs.io"
-Repository = "https://github.com/openrocketengine/openrocketengine"
+Homepage = "https://github.com/cmflannery/rocket"
+Repository = "https://github.com/cmflannery/rocket"
 
 [build-system]
 requires = ["hatchling"]

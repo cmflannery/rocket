@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pytest
 
-from openrocketengine.isentropic import (
+from rocket.isentropic import (
     G0_SI,
     R_UNIVERSAL_SI,
     area_ratio_from_mach,

@@ -4,9 +4,9 @@ Getting Started
 Designing a Rocket Engine
 -------------------------
 
-What does OpenRocketEngine Do?
+What does Rocket Do?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-OpenRocketEngine will perform some basic calculations for rocket thrust chamber designs. Additionally,
+Rocket will perform some basic calculations for rocket thrust chamber designs. Additionally,
 it will be able to perform comparisions of different configurations.
 
 This code was originally created with the intention of automating vehicle sizing trade studies.
@@ -29,7 +29,7 @@ The inputs are classified as either required or optional.
 
 Configuration Files
 ~~~~~~~~~~~~~~~~~~~
-openrocketengine takes a configuration file as the only input, specifying the engine propellant properties, pressures desired,
+rocket takes a configuration file as the only input, specifying the engine propellant properties, pressures desired,
 and geometric design choices. Right now, there is only one possible combination of parameters that all have to be included in
 the config file. In the future, there may be additional options to automatically retrieve propellant properties from CEA.
 
@@ -37,9 +37,9 @@ Config files are usually named with the engine name and the revision number with
 
 A typical configuration file looks like the following::
 
-    # This is a test configuration file for openrocketengine
+    # This is a test configuration file for rocket
     #
-    # The parameters listed here are all the known parameters that openrocketengine can take as inputs.
+    # The parameters listed here are all the known parameters that rocket can take as inputs.
     # Refer to the official documentation for more implementation and usage details.
     name RBF1
     units SI
@@ -57,13 +57,13 @@ A typical configuration file looks like the following::
 
 Running the program
 ~~~~~~~~~~~~~~~~~~~
-openrocketengine can be fun from the command line with the command `rocket`::
+rocket can be fun from the command line with the command `rocket`::
 
     $ rocket RBF-rev01.cfg
 
 Outputs
 ~~~~~~~
-openrocketengine generates an output excel workbook with two sheets; one geometric parameters, and one for performance parameters.
+rocket generates an output excel workbook with two sheets; one geometric parameters, and one for performance parameters.
 
 
 Recommended Workflow

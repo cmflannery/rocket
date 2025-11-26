@@ -1,4 +1,4 @@
-"""Engine module for OpenRocketEngine.
+"""Engine module for Rocket.
 
 This module provides the core data structures and computation functions for
 rocket engine design and analysis.
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from beartype import beartype
 
-from openrocketengine.isentropic import (
+from rocket.isentropic import (
     G0_SI,
     area_ratio_from_mach,
     bell_nozzle_length,
@@ -31,7 +31,11 @@ from openrocketengine.isentropic import (
     thrust_coefficient,
     thrust_coefficient_vacuum,
 )
-from openrocketengine.units import (
+from rocket.propellants import (
+    get_combustion_properties,
+    get_optimal_mixture_ratio,
+)
+from rocket.units import (
     Quantity,
     kelvin,
     kg_per_second,
@@ -182,11 +186,6 @@ class EngineInputs:
             ... )
             >>> print(f"Tc = {inputs.chamber_temp}")
         """
-        from openrocketengine.propellants import (
-            get_combustion_properties,
-            get_optimal_mixture_ratio,
-        )
-
         # Default exit pressure to 1 atm
         if exit_pressure is None:
             exit_pressure = pascals(101325)

@@ -1,30 +1,27 @@
-"""OpenRocketEngine - Tools for liquid rocket engine design and analysis.
+"""Rocket - Tools for rocket vehicle design and analysis.
 
 This package provides a comprehensive toolkit for designing and analyzing
-liquid propellant rocket engines using isentropic flow equations.
+rocket vehicles, including propulsion, tanks, and structures.
 
 Example:
-    >>> from openrocketengine import EngineInputs, design_engine
-    >>> from openrocketengine.units import newtons, megapascals, kelvin, meters, pascals
+    >>> from rocket import EngineInputs, design_engine
+    >>> from rocket.units import kilonewtons, megapascals
     >>>
-    >>> inputs = EngineInputs(
-    ...     thrust=newtons(5000),
-    ...     chamber_pressure=megapascals(2.0),
-    ...     chamber_temp=kelvin(3200),
-    ...     exit_pressure=pascals(101325),
-    ...     molecular_weight=22.0,
-    ...     gamma=1.2,
-    ...     lstar=meters(1.0),
-    ...     mixture_ratio=2.0,
+    >>> inputs = EngineInputs.from_propellants(
+    ...     oxidizer="LOX",
+    ...     fuel="RP1",
+    ...     thrust=kilonewtons(100),
+    ...     chamber_pressure=megapascals(7),
+    ...     mixture_ratio=2.7,
     ... )
     >>> performance, geometry = design_engine(inputs)
     >>> print(f"Isp: {performance.isp.value:.1f} s")
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Core engine design
-from openrocketengine.engine import (
+from rocket.engine import (
     EngineGeometry,
     EngineInputs,
     EnginePerformance,
@@ -38,7 +35,7 @@ from openrocketengine.engine import (
 )
 
 # Nozzle contour generation
-from openrocketengine.nozzle import (
+from rocket.nozzle import (
     NozzleContour,
     conical_contour,
     full_chamber_contour,
@@ -47,20 +44,33 @@ from openrocketengine.nozzle import (
 )
 
 # Visualization
-from openrocketengine.plotting import (
+from rocket.plotting import (
     plot_engine_cross_section,
     plot_engine_dashboard,
+    plot_mass_breakdown,
     plot_nozzle_contour,
     plot_performance_vs_altitude,
 )
 
 # Propellants and thermochemistry
-from openrocketengine.propellants import (
+from rocket.propellants import (
     CombustionProperties,
     get_combustion_properties,
     get_optimal_mixture_ratio,
     is_cea_available,
     list_database_propellants,
+)
+
+# Tank sizing
+from rocket.tanks import (
+    PropellantRequirements,
+    TankGeometry,
+    format_tank_summary,
+    get_propellant_density,
+    list_materials,
+    list_propellants,
+    size_propellant,
+    size_tank,
 )
 
 __all__ = [
@@ -89,10 +99,20 @@ __all__ = [
     "plot_nozzle_contour",
     "plot_performance_vs_altitude",
     "plot_engine_dashboard",
+    "plot_mass_breakdown",
     # Propellants
     "CombustionProperties",
     "get_combustion_properties",
     "get_optimal_mixture_ratio",
     "is_cea_available",
     "list_database_propellants",
+    # Tanks
+    "PropellantRequirements",
+    "TankGeometry",
+    "size_propellant",
+    "size_tank",
+    "get_propellant_density",
+    "list_propellants",
+    "list_materials",
+    "format_tank_summary",
 ]
