@@ -1,9 +1,9 @@
-.. openrocketengine documentation master file, created by
+.. rocket documentation master file, created by
    sphinx-quickstart on Sun Jul 29 01:55:39 2018.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to openrocketengine's documentation!
+Welcome to rocket's documentation!
 ============================================
 
 .. toctree::
@@ -19,14 +19,14 @@ Welcome to openrocketengine's documentation!
 Overview
 --------
 
-OpenRocketEngine performs the calculations for simple analysis and design of rocket engines. For a
+Rocket performs the calculations for simple analysis and design of rocket engines. For a
 general overview of the philosophy behind designing rocket engines, refer to the `rocket propulsion
 section`_ of General Body of Knowledge (GBOK).
 
 Installation
 ------------
 
-OpenRocketEngine only supports python 3.5 and above. Functionality with other python releases is
+Rocket only supports python 3.5 and above. Functionality with other python releases is
 untested and not guaranteed. Basic usage::
 
     $ rocket config_file.cfg

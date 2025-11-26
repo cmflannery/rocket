@@ -7,15 +7,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from openrocketengine.engine import EngineInputs, design_engine
-from openrocketengine.nozzle import (
+from rocket.engine import EngineInputs, design_engine
+from rocket.nozzle import (
     NozzleContour,
     conical_contour,
     full_chamber_contour,
     generate_nozzle_from_geometry,
     rao_bell_contour,
 )
-from openrocketengine.units import kelvin, megapascals, meters, newtons, pascals
+from rocket.units import kelvin, megapascals, meters, newtons, pascals
 
 
 class TestNozzleContour:

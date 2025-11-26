@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath("."))
 
 # -- Project information -----------------------------------------------------
 
-project = "openrocketengine"
+project = "rocket"
 copyright = "2018, cmflannery"
 author = "cmflannery"
 
@@ -106,7 +106,7 @@ html_static_path = ["_static"]
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "openrocketenginedoc"
+htmlhelp_basename = "rocketdoc"
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -132,8 +132,8 @@ latex_elements = {
 latex_documents = [
     (
         master_doc,
-        "openrocketengine.tex",
-        "openrocketengine Documentation",
+        "rocket.tex",
+        "rocket Documentation",
         "cmflannery",
         "manual",
     ),
@@ -145,7 +145,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, "openrocketengine", "openrocketengine Documentation", [author], 1)
+    (master_doc, "rocket", "rocket Documentation", [author], 1)
 ]
 
 
@@ -157,10 +157,10 @@ man_pages = [
 texinfo_documents = [
     (
         master_doc,
-        "openrocketengine",
-        "openrocketengine Documentation",
+        "rocket",
+        "rocket Documentation",
         author,
-        "openrocketengine",
+        "rocket",
         "One line description of project.",
         "Miscellaneous",
     ),

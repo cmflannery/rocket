@@ -1,4 +1,4 @@
-"""Visualization module for OpenRocketEngine.
+"""Visualization module for Rocket.
 
 Provides plotting functions for:
 - Engine cross-section views
@@ -17,15 +17,15 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 from numpy.typing import NDArray
 
-from openrocketengine.engine import (
+from rocket.engine import (
     EngineGeometry,
     EngineInputs,
     EnginePerformance,
     isp_at_altitude,
     thrust_at_altitude,
 )
-from openrocketengine.nozzle import NozzleContour
-from openrocketengine.units import pascals
+from rocket.nozzle import NozzleContour
+from rocket.units import pascals
 
 # =============================================================================
 # Plot Style Configuration
@@ -446,7 +446,7 @@ def plot_isp_vs_expansion_ratio(
     Returns:
         matplotlib Figure
     """
-    from openrocketengine.isentropic import (
+    from rocket.isentropic import (
         area_ratio_from_mach,
         mach_from_pressure_ratio,
         thrust_coefficient,
@@ -654,6 +654,68 @@ def plot_engine_dashboard(
 
     fig.suptitle(f"Engine Design Summary: {name}", fontsize=16, fontweight="bold", y=0.98)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
+
+    return fig
+
+
+@beartype
+def plot_mass_breakdown(
+    masses: dict[str, float | int],
+    title: str = "Vehicle Mass Breakdown",
+) -> Figure:
+    """Plot a mass breakdown pie chart and bar chart.
+
+    Args:
+        masses: Dictionary of component names to masses in kg
+        title: Plot title
+
+    Returns:
+        matplotlib Figure
+    """
+    _setup_style()
+    fig, (ax_pie, ax_bar) = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Sort by mass
+    sorted_items = sorted(masses.items(), key=lambda x: x[1], reverse=True)
+    labels = [item[0] for item in sorted_items]
+    values = [item[1] for item in sorted_items]
+    total = sum(values)
+
+    # Color palette
+    colors = plt.cm.Set3(np.linspace(0, 1, len(labels)))
+
+    # Pie chart
+    wedges, texts, autotexts = ax_pie.pie(
+        values, labels=None, autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
+        colors=colors, startangle=90, counterclock=False,
+        wedgeprops=dict(linewidth=2, edgecolor="white")
+    )
+    ax_pie.set_title("Mass Distribution", fontsize=12, fontweight="bold")
+
+    # Legend for pie chart
+    legend_labels = [f"{l}: {v:,.0f} kg" for l, v in zip(labels, values)]
+    ax_pie.legend(wedges, legend_labels, loc="center left", bbox_to_anchor=(1, 0.5))
+
+    # Bar chart
+    y_pos = np.arange(len(labels))
+    bars = ax_bar.barh(y_pos, values, color=colors, edgecolor="black", linewidth=1)
+    ax_bar.set_yticks(y_pos)
+    ax_bar.set_yticklabels(labels)
+    ax_bar.set_xlabel("Mass (kg)")
+    ax_bar.set_title("Component Masses", fontsize=12, fontweight="bold")
+    ax_bar.grid(True, alpha=0.3, axis="x")
+
+    # Add value labels on bars
+    for bar, val in zip(bars, values):
+        width = bar.get_width()
+        ax_bar.text(width + total * 0.01, bar.get_y() + bar.get_height() / 2,
+                    f"{val:,.0f} kg", va="center", fontsize=9)
+
+    ax_bar.set_xlim(0, max(values) * 1.15)
+
+    # Total mass annotation
+    fig.suptitle(f"{title}\nTotal: {total:,.0f} kg", fontsize=14, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from openrocketengine.engine import (
+from rocket.engine import (
     EngineGeometry,
     EngineInputs,
     EnginePerformance,
@@ -14,7 +14,7 @@ from openrocketengine.engine import (
     isp_at_altitude,
     thrust_at_altitude,
 )
-from openrocketengine.units import (
+from rocket.units import (
     kelvin,
     megapascals,
     meters,

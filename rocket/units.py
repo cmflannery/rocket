@@ -1,4 +1,4 @@
-"""Units module for OpenRocketEngine.
+"""Units module for Rocket.
 
 Provides a Quantity class for type-safe physical quantities with unit conversion.
 All physical values in the library should use Quantity, never bare floats.
@@ -548,6 +548,12 @@ def meters_per_second(value: float | int) -> Quantity:
 def feet_per_second(value: float | int) -> Quantity:
     """Create a velocity quantity in ft/s."""
     return Quantity(value, "ft/s", "velocity")
+
+
+@beartype
+def km_per_second(value: float | int) -> Quantity:
+    """Create a velocity quantity in km/s."""
+    return Quantity(value, "km/s", "velocity")
 
 
 @beartype
