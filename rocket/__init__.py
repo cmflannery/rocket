@@ -58,6 +58,7 @@ from rocket.propellants import (
     get_combustion_properties,
     get_optimal_mixture_ratio,
     is_cea_available,
+    list_database_propellants,
 )
 
 # Tank sizing
@@ -104,6 +105,7 @@ __all__ = [
     "get_combustion_properties",
     "get_optimal_mixture_ratio",
     "is_cea_available",
+    "list_database_propellants",
     # Tanks
     "PropellantRequirements",
     "TankGeometry",

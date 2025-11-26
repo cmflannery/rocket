@@ -5,10 +5,7 @@ import math
 import pytest
 
 from rocket.tanks import (
-    PROPELLANT_DENSITIES,
     TANK_MATERIALS,
-    PropellantRequirements,
-    TankGeometry,
     format_tank_summary,
     get_propellant_density,
     list_materials,
@@ -17,13 +14,11 @@ from rocket.tanks import (
     size_tank,
 )
 from rocket.units import (
-    cubic_meters,
     kilograms,
     km_per_second,
     meters,
     meters_per_second,
     pascals,
-    seconds,
 )
 
 
@@ -82,7 +77,7 @@ class TestMaterialDatabase:
 
     def test_material_properties(self) -> None:
         """Test that materials have required properties."""
-        for name, props in TANK_MATERIALS.items():
+        for _name, props in TANK_MATERIALS.items():
             assert "density" in props
             assert "yield_strength" in props
             assert "ultimate_strength" in props

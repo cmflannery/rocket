@@ -693,7 +693,7 @@ def plot_mass_breakdown(
     ax_pie.set_title("Mass Distribution", fontsize=12, fontweight="bold")
 
     # Legend for pie chart
-    legend_labels = [f"{l}: {v:,.0f} kg" for l, v in zip(labels, values)]
+    legend_labels = [f"{label}: {v:,.0f} kg" for label, v in zip(labels, values, strict=True)]
     ax_pie.legend(wedges, legend_labels, loc="center left", bbox_to_anchor=(1, 0.5))
 
     # Bar chart
@@ -706,7 +706,7 @@ def plot_mass_breakdown(
     ax_bar.grid(True, alpha=0.3, axis="x")
 
     # Add value labels on bars
-    for bar, val in zip(bars, values):
+    for bar, val in zip(bars, values, strict=True):
         width = bar.get_width()
         ax_bar.text(width + total * 0.01, bar.get_y() + bar.get_height() / 2,
                     f"{val:,.0f} kg", va="center", fontsize=9)

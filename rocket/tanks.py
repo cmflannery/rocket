@@ -31,10 +31,8 @@ from rocket.units import (
     cubic_meters,
     kilograms,
     meters,
-    pascals,
     seconds,
 )
-
 
 # =============================================================================
 # Propellant Database

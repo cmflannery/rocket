@@ -7,6 +7,7 @@ from rocket.propellants import (
     get_combustion_properties,
     get_optimal_mixture_ratio,
     is_cea_available,
+    list_database_propellants,
 )
 
 
@@ -30,6 +31,20 @@ class TestCombustionProperties:
         assert props.chamber_temp_k == 3500.0
         assert props.gamma == 1.2
         assert props.source == "test"
+
+
+
+class TestDatabasePropellants:
+    """Test propellant database functionality."""
+
+    def test_list_database_propellants(self) -> None:
+        """Test listing available propellants."""
+        propellants = list_database_propellants()
+
+        assert len(propellants) > 0
+        assert ("LOX", "RP1") in propellants
+        assert ("LOX", "LH2") in propellants
+        assert ("LOX", "CH4") in propellants
 
 
 class TestCEAIntegration:
@@ -95,14 +110,33 @@ class TestCEAIntegration:
         assert 3000 < props.chamber_temp_k < 3500
         assert 20 < props.molecular_weight < 25
 
+    def test_mixture_ratio_variation(self) -> None:
+        """Test that different mixture ratios give different results."""
+        props_low = get_combustion_properties(
+            oxidizer="LOX", fuel="RP1", mixture_ratio=2.0, chamber_pressure_pa=7e6
+        )
+        props_mid = get_combustion_properties(
+            oxidizer="LOX", fuel="RP1", mixture_ratio=2.5, chamber_pressure_pa=7e6
+        )
+        props_high = get_combustion_properties(
+            oxidizer="LOX", fuel="RP1", mixture_ratio=3.0, chamber_pressure_pa=7e6
+        )
+
+        # Molecular weight should increase with more oxidizer
+        assert props_low.molecular_weight < props_high.molecular_weight
+        # All should be valid
+        assert props_mid.chamber_temp_k > 3000
+
     def test_name_normalization(self) -> None:
         """Test that propellant names are normalized."""
         # These should all give similar results
         props1 = get_combustion_properties("LOX", "RP1", 2.7, 7e6)
         props2 = get_combustion_properties("LO2", "RP-1", 2.7, 7e6)
+        props3 = get_combustion_properties("OXYGEN", "KEROSENE", 2.7, 7e6)
 
         # All should map to the same propellant combination
         assert props1.chamber_temp_k == pytest.approx(props2.chamber_temp_k, rel=0.01)
+        assert props1.chamber_temp_k == pytest.approx(props3.chamber_temp_k, rel=0.01)
 
 
 class TestOptimalMixtureRatio:
@@ -201,3 +235,19 @@ class TestEngineInputsFromPropellants:
         assert performance.mdot.value > 0
         assert geometry.throat_diameter.value > 0
         assert geometry.expansion_ratio > 1
+
+    def test_from_propellants_custom_name(self) -> None:
+        """Test custom engine name."""
+        from rocket.engine import EngineInputs
+        from rocket.units import megapascals, newtons
+
+        inputs = EngineInputs.from_propellants(
+            oxidizer="LOX",
+            fuel="RP1",
+            thrust=newtons(10000),
+            chamber_pressure=megapascals(2),
+            mixture_ratio=2.5,
+            name="My Custom Engine",
+        )
+
+        assert inputs.name == "My Custom Engine"

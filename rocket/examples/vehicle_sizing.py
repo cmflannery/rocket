@@ -250,7 +250,7 @@ def main() -> None:
     print("╔" + "═" * 68 + "╗")
     print("║" + " " * 26 + "DESIGN COMPLETE" + " " * 27 + "║")
     print("╠" + "═" * 68 + "╣")
-    print(f"║  Vehicle: Methalox SSTO                                           ║")
+    print("║  Vehicle: Methalox SSTO                                           ║")
     print(f"║  Payload: {payload_mass.value:,.0f} kg to LEO                                        ║")
     print(f"║  Wet Mass: {total_wet:,.0f} kg                                           ║")
     print(f"║  T/W: {twr:.2f}                                                        ║")

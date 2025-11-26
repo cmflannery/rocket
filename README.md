@@ -1,5 +1,7 @@
 # Rocket
 
+![Python package](https://github.com/cmflannery/openrocketengine/workflows/Python%20package/badge.svg)
+
 Tools for rocket vehicle design and analysis.
 
 ## Installation
@@ -60,6 +62,7 @@ plot_engine_dashboard(inputs, performance, geometry)
 - `rocket.plotting` - Visualization tools
 - `rocket.propellants` - NASA CEA thermochemistry integration
 - `rocket.tanks` - Propellant and tank sizing (coming soon)
+
 
 ## References
 
