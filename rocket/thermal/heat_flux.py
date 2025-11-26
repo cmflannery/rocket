@@ -170,7 +170,7 @@ def bartz_heat_flux(
     # Heat flux
     q = h * (T_aw - Tw)
 
-    return Quantity(q, "Pa", "pressure")  # W/m² = Pa·m/s, using Pa as proxy
+    return Quantity(q, "W/m^2", "heat_flux")
 
 
 @beartype

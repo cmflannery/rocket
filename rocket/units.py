@@ -34,6 +34,8 @@ DIMENSIONS = {
     "volume": "m^3",
     "mass_flow": "kg/s",
     "density": "kg/m^3",
+    "power": "W",
+    "heat_flux": "W/m^2",
     "specific_impulse": "s",
     "dimensionless": "1",
 }
@@ -104,6 +106,11 @@ CONVERSIONS: dict[str, tuple[float, str]] = {
     "kW": (1000.0, "power"),
     "MW": (1e6, "power"),
     "hp": (745.7, "power"),  # Mechanical horsepower
+    # Heat flux (power per area)
+    "W/m^2": (1.0, "heat_flux"),
+    "kW/m^2": (1000.0, "heat_flux"),
+    "MW/m^2": (1e6, "heat_flux"),
+    "BTU/ft^2/s": (11356.5, "heat_flux"),
     # Specific impulse (time dimension but special meaning)
     # Note: Isp in seconds is the same in SI and Imperial
     # Dimensionless

@@ -6,6 +6,8 @@ components and evaluating cooling system feasibility.
 Key capabilities:
 - Heat flux estimation using Bartz correlation
 - Regenerative cooling feasibility screening
+- Transient thermal simulation (startup, shutdown, duty cycles)
+- Material properties database
 - Wall temperature prediction
 - Coolant property database
 
@@ -19,12 +21,11 @@ Example:
     >>> q_throat = estimate_heat_flux(inputs, performance, geometry, location="throat")
     >>> print(f"Throat heat flux: {q_throat.value/1e6:.1f} MW/m²")
     >>>
-    >>> cooling = check_cooling_feasibility(
-    ...     inputs, performance, geometry,
-    ...     coolant="CH4",
-    ...     max_wall_temp=kelvin(800),
-    ... )
-    >>> print(f"Cooling feasible: {cooling.feasible}")
+    >>> # Transient simulation
+    >>> from rocket.thermal import simulate_startup
+    >>> result = simulate_startup(inputs, performance, geometry,
+    ...     wall_thickness=meters(0.003), wall_material="copper")
+    >>> print(f"Peak wall temp: {result.peak_wall_temp:.0f} K")
 """
 
 from rocket.thermal.heat_flux import (
@@ -34,11 +35,26 @@ from rocket.thermal.heat_flux import (
     heat_flux_profile,
     recovery_factor,
 )
+from rocket.thermal.materials import (
+    check_material_limits,
+    compare_materials,
+    get_material_properties,
+    get_specific_heat,
+    get_thermal_conductivity,
+    get_thermal_diffusivity,
+    list_materials,
+)
 from rocket.thermal.regenerative import (
     CoolantProperties,
     CoolingFeasibility,
     check_cooling_feasibility,
     get_coolant_properties,
+)
+from rocket.thermal.transient import (
+    TransientThermalResult,
+    simulate_duty_cycle,
+    simulate_shutdown,
+    simulate_startup,
 )
 
 __all__ = [
@@ -53,5 +69,18 @@ __all__ = [
     "CoolantProperties",
     "check_cooling_feasibility",
     "get_coolant_properties",
+    # Materials
+    "get_material_properties",
+    "get_thermal_conductivity",
+    "get_specific_heat",
+    "get_thermal_diffusivity",
+    "check_material_limits",
+    "compare_materials",
+    "list_materials",
+    # Transient thermal
+    "TransientThermalResult",
+    "simulate_startup",
+    "simulate_shutdown",
+    "simulate_duty_cycle",
 ]
 

@@ -1022,3 +1022,210 @@ def plot_cycle_tradeoff(
     fig.tight_layout()
 
     return fig
+
+
+# =============================================================================
+# Transient Thermal Plots
+# =============================================================================
+
+
+@beartype
+def plot_thermal_transient(
+    time: np.ndarray,
+    wall_temp_inner: np.ndarray,
+    wall_temp_outer: np.ndarray | None = None,
+    heat_flux: np.ndarray | None = None,
+    max_temp: float | None = None,
+    title: str = "Thermal Transient Analysis",
+    figsize: tuple[float, float] = (12, 8),
+) -> Figure:
+    """Plot thermal transient simulation results.
+
+    Creates a multi-panel plot showing:
+    - Wall temperature vs time
+    - Heat flux vs time (optional)
+    - Material limit comparison
+
+    Args:
+        time: Time array [s]
+        wall_temp_inner: Inner wall temperature [K]
+        wall_temp_outer: Outer wall temperature [K] (optional)
+        heat_flux: Heat flux array [W/m²] (optional)
+        max_temp: Material temperature limit [K] (optional)
+        title: Plot title
+        figsize: Figure size
+
+    Returns:
+        Matplotlib Figure
+    """
+    n_plots = 1 + (heat_flux is not None)
+
+    fig, axes = plt.subplots(n_plots, 1, figsize=figsize, sharex=True)
+    if n_plots == 1:
+        axes = [axes]
+
+    # Color scheme
+    inner_color = "#e63946"  # Red for hot side
+    outer_color = "#457b9d"  # Blue for cold side
+    limit_color = "#f4a261"  # Orange for limits
+
+    # Temperature plot
+    ax_temp = axes[0]
+    ax_temp.plot(time, wall_temp_inner, color=inner_color, linewidth=2, label="Inner wall (gas side)")
+    if wall_temp_outer is not None:
+        ax_temp.plot(time, wall_temp_outer, color=outer_color, linewidth=2, label="Outer wall (coolant side)")
+
+    if max_temp is not None:
+        ax_temp.axhline(y=max_temp, color=limit_color, linestyle="--", linewidth=2, label=f"Material limit ({max_temp:.0f} K)")
+        ax_temp.fill_between(time, max_temp, max(wall_temp_inner.max(), max_temp) * 1.1,
+                             color=limit_color, alpha=0.2)
+
+    ax_temp.set_ylabel("Temperature [K]", fontsize=11)
+    ax_temp.legend(loc="upper right")
+    ax_temp.grid(True, alpha=0.3)
+    ax_temp.set_title(title, fontsize=14, fontweight="bold")
+
+    # Heat flux plot
+    if heat_flux is not None:
+        ax_q = axes[1]
+        q_mw = heat_flux / 1e6  # Convert to MW/m²
+        ax_q.fill_between(time, 0, q_mw, color="#2a9d8f", alpha=0.4)
+        ax_q.plot(time, q_mw, color="#2a9d8f", linewidth=2)
+        ax_q.set_ylabel("Heat Flux [MW/m²]", fontsize=11)
+        ax_q.set_xlabel("Time [s]", fontsize=11)
+        ax_q.grid(True, alpha=0.3)
+    else:
+        axes[-1].set_xlabel("Time [s]", fontsize=11)
+
+    fig.tight_layout()
+    return fig
+
+
+@beartype
+def plot_thermal_margin(
+    time: np.ndarray,
+    thermal_margin: np.ndarray,
+    title: str = "Thermal Margin Analysis",
+    figsize: tuple[float, float] = (10, 6),
+) -> Figure:
+    """Plot thermal margin over time.
+
+    Shows how close the wall temperature gets to the material limit.
+    Positive margin = safe, negative = exceeding limit.
+
+    Args:
+        time: Time array [s]
+        thermal_margin: Temperature margin [K] (T_limit - T_wall)
+        title: Plot title
+        figsize: Figure size
+
+    Returns:
+        Matplotlib Figure
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Color by safety
+    safe_mask = thermal_margin >= 0
+    colors = np.where(safe_mask, "#2a9d8f", "#e63946")
+
+    ax.fill_between(time, 0, thermal_margin, where=safe_mask, color="#2a9d8f", alpha=0.3, label="Safe")
+    ax.fill_between(time, 0, thermal_margin, where=~safe_mask, color="#e63946", alpha=0.3, label="Exceeds limit")
+    ax.plot(time, thermal_margin, color="#264653", linewidth=2)
+
+    ax.axhline(y=0, color="black", linestyle="-", linewidth=1)
+
+    # Warning zones
+    ax.axhline(y=50, color="#f4a261", linestyle="--", alpha=0.7, label="50 K margin")
+    ax.axhline(y=100, color="#e9c46a", linestyle="--", alpha=0.7, label="100 K margin")
+
+    ax.set_xlabel("Time [s]", fontsize=11)
+    ax.set_ylabel("Thermal Margin [K]", fontsize=11)
+    ax.set_title(title, fontsize=14, fontweight="bold")
+    ax.legend(loc="upper right")
+    ax.grid(True, alpha=0.3)
+
+    # Add min margin annotation
+    min_margin = np.min(thermal_margin)
+    min_idx = np.argmin(thermal_margin)
+    ax.annotate(
+        f"Min: {min_margin:.0f} K",
+        xy=(time[min_idx], min_margin),
+        xytext=(time[min_idx] + 0.5, min_margin + 30),
+        arrowprops=dict(arrowstyle="->", color="#264653"),
+        fontsize=10,
+    )
+
+    fig.tight_layout()
+    return fig
+
+
+@beartype
+def plot_duty_cycle_thermal(
+    time: np.ndarray,
+    wall_temp: np.ndarray,
+    heat_flux: np.ndarray,
+    max_temp: float,
+    burn_time: float,
+    coast_time: float,
+    n_cycles: int,
+    title: str = "Duty Cycle Thermal Analysis",
+    figsize: tuple[float, float] = (14, 10),
+) -> Figure:
+    """Plot thermal behavior over multiple burn/coast cycles.
+
+    Args:
+        time: Time array [s]
+        wall_temp: Wall temperature [K]
+        heat_flux: Heat flux [W/m²]
+        max_temp: Material temperature limit [K]
+        burn_time: Duration of each burn [s]
+        coast_time: Duration of coast between burns [s]
+        n_cycles: Number of cycles
+        title: Plot title
+        figsize: Figure size
+
+    Returns:
+        Matplotlib Figure
+    """
+    fig, axes = plt.subplots(3, 1, figsize=figsize, sharex=True)
+
+    cycle_time = burn_time + coast_time
+
+    # Temperature plot
+    ax_temp = axes[0]
+    ax_temp.plot(time, wall_temp, color="#e63946", linewidth=1.5)
+    ax_temp.axhline(y=max_temp, color="#f4a261", linestyle="--", linewidth=2, label=f"Limit: {max_temp:.0f} K")
+
+    # Shade burn periods
+    for i in range(n_cycles):
+        start = i * cycle_time
+        end = start + burn_time
+        ax_temp.axvspan(start, end, color="#ffb4a2", alpha=0.3)
+
+    ax_temp.set_ylabel("Wall Temp [K]", fontsize=11)
+    ax_temp.legend(loc="upper right")
+    ax_temp.grid(True, alpha=0.3)
+    ax_temp.set_title(title, fontsize=14, fontweight="bold")
+
+    # Heat flux plot
+    ax_q = axes[1]
+    q_mw = heat_flux / 1e6
+    ax_q.fill_between(time, 0, q_mw, color="#2a9d8f", alpha=0.4)
+    ax_q.plot(time, q_mw, color="#2a9d8f", linewidth=1)
+    ax_q.set_ylabel("Heat Flux [MW/m²]", fontsize=11)
+    ax_q.grid(True, alpha=0.3)
+
+    # Thermal margin plot
+    ax_margin = axes[2]
+    margin = max_temp - wall_temp
+    safe_mask = margin >= 0
+    ax_margin.fill_between(time, 0, margin, where=safe_mask, color="#2a9d8f", alpha=0.3)
+    ax_margin.fill_between(time, 0, margin, where=~safe_mask, color="#e63946", alpha=0.3)
+    ax_margin.plot(time, margin, color="#264653", linewidth=1.5)
+    ax_margin.axhline(y=0, color="black", linestyle="-", linewidth=1)
+    ax_margin.set_ylabel("Margin [K]", fontsize=11)
+    ax_margin.set_xlabel("Time [s]", fontsize=11)
+    ax_margin.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    return fig

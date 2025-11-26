@@ -113,9 +113,10 @@ def main() -> None:
     pareto_df = pareto_results.pareto_front()
 
     for i, row in enumerate(pareto_df.iter_rows(named=True)):
-        pc_mpa = row["chamber_pressure"] / 1e6
+        # chamber_pressure is stored in MPa (as specified in Range)
+        pc_mpa = row["chamber_pressure"]
         dt_cm = row["throat_diameter"] * 100
-        print(f"  {i+1:<4} {pc_mpa:<10.0f} {row['mixture_ratio']:<8.1f} {row['isp_vac']:<12.1f} {dt_cm:<12.2f} {row['expansion_ratio']:<8.1f}")
+        print(f"  {i+1:<4} {pc_mpa:<10.1f} {row['mixture_ratio']:<8.2f} {row['isp_vac']:<12.1f} {dt_cm:<12.2f} {row['expansion_ratio']:<8.1f}")
 
     print()
 
@@ -133,7 +134,7 @@ def main() -> None:
     best_isp_row = pareto_df.row(best_isp_idx, named=True)
 
     print("For MAXIMUM PERFORMANCE (highest Isp):")
-    print(f"  Chamber pressure: {best_isp_row['chamber_pressure']/1e6:.0f} MPa")
+    print(f"  Chamber pressure: {best_isp_row['chamber_pressure']:.1f} MPa")
     print(f"  Mixture ratio:    {best_isp_row['mixture_ratio']:.1f}")
     print(f"  Isp (vac):        {best_isp_row['isp_vac']:.1f} s")
     print(f"  Throat diameter:  {best_isp_row['throat_diameter']*100:.2f} cm")
@@ -144,7 +145,7 @@ def main() -> None:
     best_size_row = pareto_df.row(best_size_idx, named=True)
 
     print("For MINIMUM SIZE (smallest throat):")
-    print(f"  Chamber pressure: {best_size_row['chamber_pressure']/1e6:.0f} MPa")
+    print(f"  Chamber pressure: {best_size_row['chamber_pressure']:.1f} MPa")
     print(f"  Mixture ratio:    {best_size_row['mixture_ratio']:.1f}")
     print(f"  Isp (vac):        {best_size_row['isp_vac']:.1f} s")
     print(f"  Throat diameter:  {best_size_row['throat_diameter']*100:.2f} cm")
@@ -155,7 +156,7 @@ def main() -> None:
     mid_row = pareto_df.row(mid_idx, named=True)
 
     print("For BALANCED DESIGN (middle of Pareto front):")
-    print(f"  Chamber pressure: {mid_row['chamber_pressure']/1e6:.0f} MPa")
+    print(f"  Chamber pressure: {mid_row['chamber_pressure']:.1f} MPa")
     print(f"  Mixture ratio:    {mid_row['mixture_ratio']:.1f}")
     print(f"  Isp (vac):        {mid_row['isp_vac']:.1f} s")
     print(f"  Throat diameter:  {mid_row['throat_diameter']*100:.2f} cm")
@@ -178,8 +179,11 @@ def main() -> None:
     print()
     print("  Interpretation:")
     print(f"    - You can gain up to {isp_range:.1f} s of Isp...")
-    print(f"    - ...at the cost of {dt_range:.1f} cm larger throat")
-    print(f"    - Marginal tradeoff: {isp_range/dt_range:.1f} s of Isp per cm of throat")
+    print(f"    - ...at the cost of {dt_range:.2f} cm larger throat")
+    if dt_range > 0:
+        print(f"    - Marginal tradeoff: {isp_range/dt_range:.1f} s of Isp per cm of throat")
+    else:
+        print("    - No throat size variation on Pareto front")
     print()
 
     # =========================================================================
@@ -219,17 +223,17 @@ def main() -> None:
             },
             "recommendations": {
                 "max_performance": {
-                    "chamber_pressure_MPa": best_isp_row["chamber_pressure"] / 1e6,
+                    "chamber_pressure_MPa": best_isp_row["chamber_pressure"],
                     "mixture_ratio": best_isp_row["mixture_ratio"],
                     "isp_vac_s": best_isp_row["isp_vac"],
                 },
                 "min_size": {
-                    "chamber_pressure_MPa": best_size_row["chamber_pressure"] / 1e6,
+                    "chamber_pressure_MPa": best_size_row["chamber_pressure"],
                     "mixture_ratio": best_size_row["mixture_ratio"],
                     "throat_diameter_cm": best_size_row["throat_diameter"] * 100,
                 },
                 "balanced": {
-                    "chamber_pressure_MPa": mid_row["chamber_pressure"] / 1e6,
+                    "chamber_pressure_MPa": mid_row["chamber_pressure"],
                     "mixture_ratio": mid_row["mixture_ratio"],
                     "isp_vac_s": mid_row["isp_vac"],
                     "throat_diameter_cm": mid_row["throat_diameter"] * 100,

@@ -860,6 +860,32 @@ class UncertaintyResults:
             values = values[self.constraints_passed]
         return values
 
+    def statistics(self, metrics: list[str] | None = None) -> dict[str, dict[str, float]]:
+        """Get statistical summary for all metrics.
+
+        Args:
+            metrics: List of metrics to summarize. If None, summarizes all.
+
+        Returns:
+            Dict mapping metric names to dict with 'mean', 'std', 'min', 'max', 'p5', 'p95'
+        """
+        if metrics is None:
+            metrics = [m for m in self.metrics if not m.endswith("_si")]
+
+        result = {}
+        for metric in metrics:
+            if metric in self.metrics:
+                values = self.metrics[metric]
+                result[metric] = {
+                    "mean": float(np.nanmean(values)),
+                    "std": float(np.nanstd(values)),
+                    "min": float(np.nanmin(values)),
+                    "max": float(np.nanmax(values)),
+                    "p5": float(np.nanpercentile(values, 5)),
+                    "p95": float(np.nanpercentile(values, 95)),
+                }
+        return result
+
     def summary(self, metrics: list[str] | None = None) -> str:
         """Generate a text summary of uncertainty results.
 
