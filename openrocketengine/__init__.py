@@ -54,6 +54,15 @@ from openrocketengine.plotting import (
     plot_performance_vs_altitude,
 )
 
+# Propellants and thermochemistry
+from openrocketengine.propellants import (
+    CombustionProperties,
+    get_combustion_properties,
+    get_optimal_mixture_ratio,
+    is_cea_available,
+    list_database_propellants,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -80,4 +89,10 @@ __all__ = [
     "plot_nozzle_contour",
     "plot_performance_vs_altitude",
     "plot_engine_dashboard",
+    # Propellants
+    "CombustionProperties",
+    "get_combustion_properties",
+    "get_optimal_mixture_ratio",
+    "is_cea_available",
+    "list_database_propellants",
 ]
