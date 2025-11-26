@@ -4,8 +4,8 @@ This package provides a comprehensive toolkit for designing and analyzing
 liquid propellant rocket engines using isentropic flow equations.
 
 Example:
-    >>> from openrocketengine import EngineInputs, design_engine
-    >>> from openrocketengine.units import newtons, megapascals, kelvin, meters, pascals
+    >>> from rocket import EngineInputs, design_engine
+    >>> from rocket.units import newtons, megapascals, kelvin, meters, pascals
     >>>
     >>> inputs = EngineInputs(
     ...     thrust=newtons(5000),
@@ -24,7 +24,7 @@ Example:
 __version__ = "0.2.0"
 
 # Core engine design
-from openrocketengine.engine import (
+from rocket.engine import (
     EngineGeometry,
     EngineInputs,
     EnginePerformance,
@@ -38,7 +38,7 @@ from openrocketengine.engine import (
 )
 
 # Nozzle contour generation
-from openrocketengine.nozzle import (
+from rocket.nozzle import (
     NozzleContour,
     conical_contour,
     full_chamber_contour,
@@ -47,7 +47,7 @@ from openrocketengine.nozzle import (
 )
 
 # Visualization
-from openrocketengine.plotting import (
+from rocket.plotting import (
     plot_cycle_comparison_bars,
     plot_cycle_radar,
     plot_cycle_tradeoff,
@@ -59,7 +59,7 @@ from openrocketengine.plotting import (
 )
 
 # Propellants and thermochemistry
-from openrocketengine.propellants import (
+from rocket.propellants import (
     CombustionProperties,
     get_combustion_properties,
     get_optimal_mixture_ratio,
@@ -68,7 +68,7 @@ from openrocketengine.propellants import (
 )
 
 # Output management
-from openrocketengine.output import (
+from rocket.output import (
     OutputContext,
     clean_outputs,
     get_default_output_dir,
@@ -76,7 +76,7 @@ from openrocketengine.output import (
 )
 
 # Analysis framework
-from openrocketengine.analysis import (
+from rocket.analysis import (
     Distribution,
     LogNormal,
     MultiObjectiveOptimizer,
@@ -92,7 +92,7 @@ from openrocketengine.analysis import (
 )
 
 # System-level design
-from openrocketengine.system import (
+from rocket.system import (
     EngineSystemResult,
     design_engine_system,
     format_system_summary,

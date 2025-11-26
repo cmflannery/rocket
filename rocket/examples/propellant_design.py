@@ -7,10 +7,10 @@ propellants and the library automatically determines combustion properties.
 No need to manually look up Tc, gamma, or molecular weight!
 """
 
-from openrocketengine import OutputContext, design_engine, plot_engine_dashboard
-from openrocketengine.engine import EngineInputs
-from openrocketengine.nozzle import full_chamber_contour, generate_nozzle_from_geometry
-from openrocketengine.units import kilonewtons, megapascals
+from rocket import OutputContext, design_engine, plot_engine_dashboard
+from rocket.engine import EngineInputs
+from rocket.nozzle import full_chamber_contour, generate_nozzle_from_geometry
+from rocket.units import kilonewtons, megapascals
 
 
 def main() -> None:

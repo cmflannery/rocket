@@ -18,20 +18,20 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 from numpy.typing import NDArray
 
-from openrocketengine.engine import (
+from rocket.engine import (
     EngineGeometry,
     EngineInputs,
     EnginePerformance,
     isp_at_altitude,
     thrust_at_altitude,
 )
-from openrocketengine.isentropic import (
+from rocket.isentropic import (
     area_ratio_from_mach,
     mach_from_pressure_ratio,
     thrust_coefficient,
 )
-from openrocketengine.nozzle import NozzleContour
-from openrocketengine.units import pascals
+from rocket.nozzle import NozzleContour
+from rocket.units import pascals
 
 # =============================================================================
 # Plot Style Configuration

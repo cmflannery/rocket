@@ -14,25 +14,25 @@ liquid rocket engine:
 All outputs are organized into a timestamped directory structure.
 """
 
-from openrocketengine import OutputContext
-from openrocketengine.engine import (
+from rocket import OutputContext
+from rocket.engine import (
     EngineInputs,
     compute_geometry,
     compute_performance,
     format_geometry_summary,
     format_performance_summary,
 )
-from openrocketengine.nozzle import (
+from rocket.nozzle import (
     full_chamber_contour,
     generate_nozzle_from_geometry,
 )
-from openrocketengine.plotting import (
+from rocket.plotting import (
     plot_engine_cross_section,
     plot_engine_dashboard,
     plot_nozzle_contour,
     plot_performance_vs_altitude,
 )
-from openrocketengine.units import kelvin, megapascals, meters, newtons, pascals
+from rocket.units import kelvin, megapascals, meters, newtons, pascals
 
 
 def main() -> None:
