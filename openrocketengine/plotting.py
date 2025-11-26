@@ -331,7 +331,7 @@ def plot_performance_vs_altitude(
     inputs: EngineInputs,
     performance: EnginePerformance,
     geometry: EngineGeometry,
-    max_altitude_km: float = 100.0,
+    max_altitude_km: float | int = 100.0,
     num_points: int = 100,
     figsize: tuple[float, float] = DEFAULT_FIGSIZE,
 ) -> Figure:
@@ -428,7 +428,7 @@ def plot_performance_vs_altitude(
 
 @beartype
 def plot_isp_vs_expansion_ratio(
-    gamma: float = 1.2,
+    gamma: float | int = 1.2,
     pc_pe_range: tuple[float, float] = (10, 200),
     num_points: int = 100,
     figsize: tuple[float, float] = (10, 6),
