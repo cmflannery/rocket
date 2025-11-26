@@ -32,7 +32,6 @@ from beartype import beartype
 
 from rocket.units import Quantity
 
-
 # =============================================================================
 # Serialization Helpers
 # =============================================================================

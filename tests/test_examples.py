@@ -8,16 +8,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
-
 EXAMPLES_DIR = Path(__file__).parent.parent / "rocket" / "examples"
 
 
 def run_example(example_name: str, timeout: int = 60) -> subprocess.CompletedProcess:
     """Run an example script and return the result."""
     script_path = EXAMPLES_DIR / f"{example_name}.py"
-    
+
     result = subprocess.run(
         [sys.executable, str(script_path)],
         capture_output=True,
@@ -25,7 +22,7 @@ def run_example(example_name: str, timeout: int = 60) -> subprocess.CompletedPro
         timeout=timeout,
         cwd=Path(__file__).parent.parent,  # Run from project root
     )
-    
+
     return result
 
 

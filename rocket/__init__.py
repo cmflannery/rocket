@@ -36,6 +36,15 @@ from rocket.analysis import (
     UncertaintyResults,
     Uniform,
 )
+
+# Cycle-specific performance corrections
+from rocket.cycle_corrections import (
+    CycleCorrection,
+    CycleType,
+    apply_cycle_correction,
+    get_cycle_correction,
+    list_cycle_corrections,
+)
 from rocket.engine import (
     EngineGeometry,
     EngineInputs,
@@ -93,6 +102,7 @@ from rocket.system import (
     design_engine_system,
     format_system_summary,
 )
+
 # Tank sizing
 from rocket.tanks import (
     PropellantRequirements,
@@ -103,15 +113,6 @@ from rocket.tanks import (
     list_propellants,
     size_propellant,
     size_tank,
-)
-
-# Cycle-specific performance corrections
-from rocket.cycle_corrections import (
-    CycleCorrection,
-    CycleType,
-    apply_cycle_correction,
-    get_cycle_correction,
-    list_cycle_corrections,
 )
 
 # Validation against real engines

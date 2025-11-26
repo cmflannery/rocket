@@ -31,13 +31,11 @@ from dataclasses import dataclass
 import numpy as np
 from beartype import beartype
 from numpy.typing import NDArray
-from tqdm import tqdm
 
 from rocket.engine import EngineGeometry, EngineInputs, EnginePerformance
 from rocket.thermal.heat_flux import bartz_heat_flux
 from rocket.thermal.materials import get_material_properties
-from rocket.units import Quantity, kelvin, meters
-
+from rocket.units import Quantity, kelvin
 
 # =============================================================================
 # Transient Result Dataclass
@@ -193,15 +191,8 @@ def _solve_1d_conduction(
     T_outer_history = np.zeros(n_steps, dtype=np.float64)
 
     # Get thermal diffusivity
-    if isinstance(k, np.ndarray):
-        k_avg = np.mean(k)
-    else:
-        k_avg = k
-
-    if isinstance(cp, np.ndarray):
-        cp_avg = np.mean(cp)
-    else:
-        cp_avg = cp
+    k_avg = np.mean(k) if isinstance(k, np.ndarray) else k
+    cp_avg = np.mean(cp) if isinstance(cp, np.ndarray) else cp
 
     alpha = k_avg / (rho * cp_avg)
 
@@ -523,12 +514,8 @@ def simulate_shutdown(
             q_profile[i] = 0.0
 
     # Coolant boundary condition
-    if coolant_continues:
-        T_outer = T_coolant
-    else:
-        # Coolant stops, outer surface becomes adiabatic
-        # Simplified: assume it gradually warms up
-        T_outer = np.linspace(T_coolant, T_init * 0.8, n_steps)
+    # If coolant stops, outer surface becomes adiabatic (simplified: assume it gradually warms up)
+    T_outer = T_coolant if coolant_continues else np.linspace(T_coolant, T_init * 0.8, n_steps)
 
     # Solve heat conduction
     thickness_m = wall_thickness.to("m").value

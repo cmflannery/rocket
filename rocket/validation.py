@@ -10,26 +10,24 @@ Sources:
 
 Example:
     >>> from rocket.validation import validate_against, list_reference_engines
-    >>> 
+    >>>
     >>> # See available reference engines
     >>> list_reference_engines()
     ['merlin_1d', 'raptor_2', 'rs25', 'be4', 'rd180', 'rl10']
-    >>> 
+    >>>
     >>> # Compare your design to a reference
     >>> report = validate_against("merlin_1d", my_inputs, my_performance)
 """
 
 from dataclasses import dataclass
-from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
 from beartype import beartype
 
 from rocket import EngineInputs, design_engine
-from rocket.cycle_corrections import CycleType, apply_cycle_correction, cycle_type_from_string
-from rocket.units import kilonewtons, megapascals, meters, newtons, seconds
-
+from rocket.cycle_corrections import apply_cycle_correction, cycle_type_from_string
+from rocket.units import kilonewtons, megapascals
 
 # =============================================================================
 # Reference Engine Database
@@ -42,22 +40,22 @@ class ReferenceEngine:
     manufacturer: str
     propellants: tuple[str, str]
     cycle: str
-    
+
     # Performance (published values)
     thrust_vac_kn: float
     thrust_sl_kn: float | None
     isp_vac_s: float
     isp_sl_s: float | None
-    
+
     # Operating conditions
     chamber_pressure_mpa: float
     mixture_ratio: float
-    
+
     # Geometry (if known)
     throat_diameter_m: float | None = None
     exit_diameter_m: float | None = None
     expansion_ratio: float | None = None
-    
+
     # Notes
     source: str = ""
     notes: str = ""
@@ -245,7 +243,7 @@ def get_reference(name: str) -> ReferenceEngine:
 def describe_reference(name: str) -> str:
     """Get a description of a reference engine."""
     ref = get_reference(name)
-    
+
     lines = [
         f"{ref.name} ({ref.manufacturer})",
         "=" * 50,
@@ -253,31 +251,31 @@ def describe_reference(name: str) -> str:
         f"Cycle:            {ref.cycle}",
         f"Thrust (vac):     {ref.thrust_vac_kn:.0f} kN",
     ]
-    
+
     if ref.thrust_sl_kn:
         lines.append(f"Thrust (SL):      {ref.thrust_sl_kn:.0f} kN")
-    
+
     lines.extend([
         f"Isp (vac):        {ref.isp_vac_s:.1f} s",
     ])
-    
+
     if ref.isp_sl_s:
         lines.append(f"Isp (SL):         {ref.isp_sl_s:.1f} s")
-    
+
     lines.extend([
         f"Chamber pressure: {ref.chamber_pressure_mpa:.1f} MPa",
         f"Mixture ratio:    {ref.mixture_ratio:.2f}",
     ])
-    
+
     if ref.expansion_ratio:
         lines.append(f"Expansion ratio:  {ref.expansion_ratio:.1f}")
-    
+
     if ref.notes:
         lines.extend(["", f"Notes: {ref.notes}"])
-    
+
     if ref.source:
         lines.append(f"Source: {ref.source}")
-    
+
     return "\n".join(lines)
 
 
@@ -290,24 +288,24 @@ class ValidationResult:
     computed_isp_sl: float | None
     computed_thrust_coeff: float
     computed_cstar: float
-    
+
     # Errors (percent difference) - without correction
     isp_vac_error_pct: float
     isp_sl_error_pct: float | None
-    
+
     # With cycle correction applied
     corrected_isp_vac: float | None = None
     corrected_error_pct: float | None = None
-    
+
     # Assessment
     is_valid: bool = False  # Within acceptable tolerance
     is_valid_corrected: bool = False  # Valid with correction
     tolerance_pct: float = 5.0
-    
+
     def summary(self) -> str:
         """Generate validation summary."""
         status = "✓ PASS" if self.is_valid else "✗ FAIL"
-        
+
         lines = [
             f"Validation: {self.reference.name}",
             "=" * 50,
@@ -317,18 +315,18 @@ class ValidationResult:
             "-" * 54,
             f"{'Isp (vac) [s]':<20} {self.reference.isp_vac_s:<12.1f} {self.computed_isp_vac:<12.1f} {self.isp_vac_error_pct:+.1f}%",
         ]
-        
+
         if self.corrected_isp_vac is not None:
             corr_status = "✓" if self.is_valid_corrected else "✗"
             lines.append(
                 f"{'Isp (corrected) [s]':<20} {self.reference.isp_vac_s:<12.1f} {self.corrected_isp_vac:<12.1f} {self.corrected_error_pct:+.1f}% {corr_status}"
             )
-        
+
         if self.isp_sl_error_pct is not None and self.reference.isp_sl_s:
             lines.append(
                 f"{'Isp (SL) [s]':<20} {self.reference.isp_sl_s:<12.1f} {self.computed_isp_sl:<12.1f} {self.isp_sl_error_pct:+.1f}%"
             )
-        
+
         return "\n".join(lines)
 
 
@@ -338,23 +336,23 @@ def validate_against(
     tolerance_pct: float = 5.0,
 ) -> ValidationResult:
     """Validate our model against a reference engine.
-    
+
     Creates an engine with the same inputs as the reference and
     compares computed performance.
-    
+
     Note: The model computes expansion ratio from exit pressure. For engines
     with known expansion ratios, this may not match exactly, but Isp comparison
     remains valid as it tests the thermochemistry model.
-    
+
     Args:
         reference_name: Name of reference engine
         tolerance_pct: Acceptable error percentage
-        
+
     Returns:
         ValidationResult with comparison data
     """
     ref = get_reference(reference_name)
-    
+
     # Create inputs matching the reference
     inputs = EngineInputs.from_propellants(
         oxidizer=ref.propellants[0],
@@ -364,23 +362,23 @@ def validate_against(
         mixture_ratio=ref.mixture_ratio,
         name=f"Validation-{ref.name}",
     )
-    
+
     # Compute performance
     perf, geom = design_engine(inputs)
-    
+
     # Calculate errors (without correction)
     computed_isp_vac = perf.isp_vac.value
     isp_vac_error = 100 * (computed_isp_vac - ref.isp_vac_s) / ref.isp_vac_s
-    
+
     computed_isp_sl = perf.isp.value if ref.isp_sl_s else None
     isp_sl_error = None
     if ref.isp_sl_s and computed_isp_sl:
         isp_sl_error = 100 * (computed_isp_sl - ref.isp_sl_s) / ref.isp_sl_s
-    
+
     # Determine pass/fail based on vacuum Isp only (before corrections)
     # (SL Isp depends heavily on expansion ratio choice which we don't control here)
     is_valid = abs(isp_vac_error) <= tolerance_pct
-    
+
     # Apply cycle-specific correction
     # Only apply correction if model OVER-predicts (which GG/expander corrections fix)
     corrected_isp = None
@@ -389,7 +387,7 @@ def validate_against(
     try:
         cycle_type = cycle_type_from_string(ref.cycle)
         raw_corrected = apply_cycle_correction(computed_isp_vac, cycle_type)
-        
+
         # Only use correction if it improves accuracy
         # (corrections account for losses, so they reduce predicted Isp)
         # If we're already under-predicting, correction makes it worse
@@ -405,7 +403,7 @@ def validate_against(
     except ValueError:
         # Unknown cycle type, can't apply correction
         pass
-    
+
     return ValidationResult(
         reference_name=reference_name,
         reference=ref,
@@ -426,7 +424,7 @@ def validate_against(
 @beartype
 def run_all_validations(tolerance_pct: float = 5.0) -> dict[str, ValidationResult]:
     """Run validation against all reference engines.
-    
+
     Returns dict of results keyed by engine name.
     """
     results = {}
@@ -441,30 +439,29 @@ def run_all_validations(tolerance_pct: float = 5.0) -> dict[str, ValidationResul
 @beartype
 def validation_report(tolerance_pct: float = 5.0, save_path: str | None = None) -> str:
     """Generate comprehensive validation report.
-    
+
     Args:
         tolerance_pct: Acceptable error percentage
         save_path: Optional path to save plot
-        
+
     Returns:
         Text report summarizing validation results
     """
     results = run_all_validations(tolerance_pct)
-    
+
     # Summary statistics - without correction
     n_pass = sum(1 for r in results.values() if r.is_valid)
     n_total = len(results)
-    
+
     errors = [abs(r.isp_vac_error_pct) for r in results.values()]
     mean_error = np.mean(errors)
-    max_error = max(errors)
-    
+
     # With correction
     n_pass_corrected = sum(1 for r in results.values() if r.is_valid_corrected)
-    corrected_errors = [abs(r.corrected_error_pct) for r in results.values() 
+    corrected_errors = [abs(r.corrected_error_pct) for r in results.values()
                         if r.corrected_error_pct is not None]
     mean_error_corrected = np.mean(corrected_errors) if corrected_errors else 0
-    
+
     lines = [
         "ROCKET MODEL VALIDATION REPORT",
         "=" * 70,
@@ -484,26 +481,26 @@ def validation_report(tolerance_pct: float = 5.0, save_path: str | None = None) 
         f"{'Engine':<18} {'Ref':<6} {'Model':<6} {'Err':<8} {'Corr':<6} {'Err':<8}",
         "-" * 70,
     ]
-    
-    for name, result in sorted(results.items()):
+
+    for _name, result in sorted(results.items()):
         status = "✓" if result.is_valid else "✗"
         status_corr = "✓" if result.is_valid_corrected else "✗"
         ref = result.reference
-        
+
         corr_val = f"{result.corrected_isp_vac:.0f}" if result.corrected_isp_vac else "-"
         corr_err = f"{result.corrected_error_pct:+.1f}%" if result.corrected_error_pct else "-"
-        
+
         lines.append(
             f"{status} {ref.name:<16} {ref.isp_vac_s:<6.0f} {result.computed_isp_vac:<6.0f} "
             f"{result.isp_vac_error_pct:+5.1f}%  {corr_val:<6} {corr_err:<8} {status_corr}"
         )
-    
+
     # Identify systematic patterns
-    gg_engines = [n for n, r in results.items() 
+    gg_engines = [n for n, r in results.items()
                   if r.reference.cycle == "Gas Generator" and r.isp_vac_error_pct > 5]
     expander_engines = [n for n, r in results.items()
                         if r.reference.cycle == "Expander" and r.isp_vac_error_pct < -5]
-    
+
     lines.extend([
         "",
         "-" * 60,
@@ -514,20 +511,20 @@ def validation_report(tolerance_pct: float = 5.0, save_path: str | None = None) 
         "",
         "Systematic Patterns:",
     ])
-    
+
     if gg_engines:
-        lines.append(f"  - Gas Generator engines over-predicted (+5-8%): turbine exhaust dump not modeled")
+        lines.append("  - Gas Generator engines over-predicted (+5-8%): turbine exhaust dump not modeled")
     if expander_engines:
-        lines.append(f"  - Expander cycle under-predicted (-10%): unique regenerative losses")
-    
+        lines.append("  - Expander cycle under-predicted (-10%): unique regenerative losses")
+
     lines.append("  - Staged combustion engines most accurate (<2% error)")
-    
+
     report = "\n".join(lines)
-    
+
     # Generate plot if requested
     if save_path:
         _plot_validation(results, save_path)
-    
+
     return report
 
 
@@ -535,39 +532,39 @@ def _plot_validation(results: dict[str, ValidationResult], save_path: str) -> No
     """Generate validation comparison plot."""
     from pathlib import Path
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-    
+
     fig, axes = plt.subplots(1, 2, figsize=(14, 6), facecolor='#1a1a2e')
-    
+
     names = list(results.keys())
     ref_isp = [results[n].reference.isp_vac_s for n in names]
     comp_isp = [results[n].computed_isp_vac for n in names]
     errors = [results[n].isp_vac_error_pct for n in names]
     valid = [results[n].is_valid for n in names]
-    
+
     # 1. Reference vs Computed scatter
     ax1 = axes[0]
     ax1.set_facecolor('#16213e')
-    
+
     colors = ['#16c79a' if v else '#e94560' for v in valid]
     ax1.scatter(ref_isp, comp_isp, c=colors, s=100, edgecolors='white', linewidth=1.5)
-    
+
     # Perfect agreement line
     min_isp, max_isp = min(ref_isp + comp_isp), max(ref_isp + comp_isp)
     ax1.plot([min_isp, max_isp], [min_isp, max_isp], '--', color='white', alpha=0.5, label='Perfect')
-    
+
     # ±5% bounds
-    ax1.fill_between([min_isp, max_isp], 
+    ax1.fill_between([min_isp, max_isp],
                      [min_isp * 0.95, max_isp * 0.95],
                      [min_isp * 1.05, max_isp * 1.05],
                      alpha=0.1, color='white', label='±5%')
-    
+
     # Labels
     for i, name in enumerate(names):
         short_name = results[name].reference.name.split()[0]
-        ax1.annotate(short_name, (ref_isp[i], comp_isp[i]), 
+        ax1.annotate(short_name, (ref_isp[i], comp_isp[i]),
                     xytext=(5, 5), textcoords='offset points',
                     color='white', fontsize=8)
-    
+
     ax1.set_xlabel('Reference Isp (vac) [s]', color='white', fontsize=11)
     ax1.set_ylabel('Computed Isp (vac) [s]', color='white', fontsize=11)
     ax1.set_title('Model vs Reference', color='white', fontsize=12, fontweight='bold')
@@ -577,19 +574,19 @@ def _plot_validation(results: dict[str, ValidationResult], save_path: str) -> No
         ax1.spines[spine].set_visible(False)
     for spine in ['bottom', 'left']:
         ax1.spines[spine].set_color('white')
-    
+
     # 2. Error bar chart
     ax2 = axes[1]
     ax2.set_facecolor('#16213e')
-    
+
     short_names = [results[n].reference.name.split()[0] for n in names]
     y_pos = np.arange(len(names))
-    
-    bars = ax2.barh(y_pos, errors, color=colors, edgecolor='white')
+
+    ax2.barh(y_pos, errors, color=colors, edgecolor='white')
     ax2.axvline(x=0, color='white', linewidth=1)
     ax2.axvline(x=5, color='#f4a261', linestyle='--', alpha=0.7, label='+5%')
     ax2.axvline(x=-5, color='#f4a261', linestyle='--', alpha=0.7, label='-5%')
-    
+
     ax2.set_yticks(y_pos)
     ax2.set_yticklabels(short_names, color='white', fontsize=9)
     ax2.set_xlabel('Isp Error [%]', color='white', fontsize=11)
@@ -600,11 +597,11 @@ def _plot_validation(results: dict[str, ValidationResult], save_path: str) -> No
         ax2.spines[spine].set_visible(False)
     for spine in ['bottom', 'left']:
         ax2.spines[spine].set_color('white')
-    
+
     n_pass = sum(valid)
     fig.suptitle(f'Model Validation: {n_pass}/{len(names)} engines within ±5%',
                 color='white', fontsize=14, fontweight='bold')
-    
+
     plt.tight_layout()
     fig.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='#1a1a2e')
     plt.close(fig)

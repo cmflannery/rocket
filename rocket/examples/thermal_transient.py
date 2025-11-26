@@ -25,7 +25,6 @@ from rocket.plotting import (
 )
 from rocket.thermal import (
     get_material_properties,
-    list_materials,
     simulate_duty_cycle,
     simulate_shutdown,
     simulate_startup,

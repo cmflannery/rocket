@@ -19,4 +19,4 @@ study.run()
 study.save("outputs/cycle_selection")
 
 print(f"\nRecommendation: {study.recommendation}")
-print(f"Results saved to: outputs/cycle_selection/")
+print("Results saved to: outputs/cycle_selection/")

@@ -1126,7 +1126,6 @@ def plot_thermal_margin(
 
     # Color by safety
     safe_mask = thermal_margin >= 0
-    colors = np.where(safe_mask, "#2a9d8f", "#e63946")
 
     ax.fill_between(time, 0, thermal_margin, where=safe_mask, color="#2a9d8f", alpha=0.3, label="Safe")
     ax.fill_between(time, 0, thermal_margin, where=~safe_mask, color="#e63946", alpha=0.3, label="Exceeds limit")

@@ -20,7 +20,6 @@ import numpy as np
 from beartype import beartype
 from numpy.typing import NDArray
 
-
 # =============================================================================
 # Material Property Database
 # =============================================================================
@@ -350,7 +349,7 @@ def check_material_limits(
     if np.any(temp_array > max_temp):
         warnings.append(f"Temperature exceeds max service temp ({max_temp} K)")
     if np.any(temp_array > 0.9 * max_temp):
-        warnings.append(f"Temperature above 90% of max service temp")
+        warnings.append("Temperature above 90% of max service temp")
     if np.any(temp_array > melting_point):
         warnings.append(f"Temperature exceeds melting point ({melting_point} K)!")
 

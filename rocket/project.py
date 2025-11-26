@@ -35,7 +35,6 @@ from beartype import beartype
 
 from rocket.storage import DesignFile, LocalStorage, ResultsFile
 
-
 # =============================================================================
 # Project Metadata
 # =============================================================================
