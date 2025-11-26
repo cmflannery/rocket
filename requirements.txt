@@ -1,5 +1,0 @@
-numpy>=1.0
-pandas>=0.20
-fire>=0.1.3
-pytest
-xlsxwriter
