@@ -105,6 +105,15 @@ from rocket.tanks import (
     size_tank,
 )
 
+# Cycle-specific performance corrections
+from rocket.cycle_corrections import (
+    CycleCorrection,
+    CycleType,
+    apply_cycle_correction,
+    get_cycle_correction,
+    list_cycle_corrections,
+)
+
 # Validation against real engines
 from rocket.validation import (
     ReferenceEngine,
@@ -184,6 +193,12 @@ __all__ = [
     "list_propellants",
     "list_materials",
     "format_tank_summary",
+    # Cycle corrections
+    "CycleType",
+    "CycleCorrection",
+    "apply_cycle_correction",
+    "get_cycle_correction",
+    "list_cycle_corrections",
     # Validation
     "ReferenceEngine",
     "ValidationResult",

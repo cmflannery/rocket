@@ -27,6 +27,7 @@ from beartype import beartype
 
 from rocket import EngineInputs, design_engine
 from rocket.analysis import ParametricStudy, Range
+from rocket.cycle_corrections import CycleType, apply_cycle_correction, get_cycle_correction
 from rocket.cycles import GasGeneratorCycle, PressureFedCycle, StagedCombustionCycle
 from rocket.units import kelvin, kilonewtons, megapascals
 
@@ -112,23 +113,24 @@ class CycleTradeStudy:
         """Run the cycle comparison analysis."""
         ox, fuel = self.propellants
         
-        # Analyze each cycle
+        # Analyze each cycle with corrections
+        # (name, pc_mpa, cycle_obj, cycle_type, dev_years, dev_cost, parts, trl)
         cycle_configs = [
-            ("Pressure-Fed", 2.5, PressureFedCycle(), 2, 15, 50, 9),
+            ("Pressure-Fed", 2.5, PressureFedCycle(), CycleType.PRESSURE_FED, 2, 15, 50, 9),
             ("Gas Generator", 10.0, GasGeneratorCycle(
                 turbine_inlet_temp=kelvin(900),
                 pump_efficiency_ox=0.70,
                 pump_efficiency_fuel=0.70,
-            ), 4, 80, 500, 9),
+            ), CycleType.GAS_GENERATOR, 4, 80, 500, 9),
             ("Staged Combustion", 20.0, StagedCombustionCycle(
                 preburner_temp=kelvin(750),
                 pump_efficiency_ox=0.75,
                 pump_efficiency_fuel=0.75,
-            ), 6, 200, 1500, 7),
+            ), CycleType.STAGED_COMBUSTION, 6, 200, 1500, 7),
         ]
         
         self.cycles = []
-        for name, pc_mpa, cycle_obj, dev_years, dev_cost, parts, trl in cycle_configs:
+        for name, pc_mpa, cycle_obj, cycle_type, dev_years, dev_cost, parts, trl in cycle_configs:
             inputs = EngineInputs.from_propellants(
                 oxidizer=ox, fuel=fuel,
                 thrust=kilonewtons(self.thrust_kn),
@@ -137,9 +139,14 @@ class CycleTradeStudy:
             perf, geom = design_engine(inputs)
             result = cycle_obj.analyze(inputs, perf, geom)
             
-            # Mission impact
+            # Get ideal Isp and apply cycle-specific correction
+            ideal_isp = result.net_isp.to("s").value
+            correction = get_cycle_correction(cycle_type)
+            corrected_isp = apply_cycle_correction(ideal_isp, cycle_type)
+            
+            # Mission impact using CORRECTED Isp
             mission = _rocket_equation(
-                result.net_isp.to("s").value,
+                corrected_isp,
                 self.delta_v_m_s,
                 self.payload_kg,
             )
@@ -151,7 +158,11 @@ class CycleTradeStudy:
             
             self.cycles.append({
                 "name": name,
-                "isp_vac": result.net_isp.to("s").value,
+                "cycle_type": cycle_type.name,
+                "isp_ideal": ideal_isp,
+                "isp_corrected": corrected_isp,
+                "isp_loss_pct": correction.isp_loss_percent,
+                "isp_vac": corrected_isp,  # Use corrected for comparisons
                 "propellant_kg": mission.get("propellant_kg", float("inf")),
                 "pump_power_kw": pump_power,
                 "dev_years": dev_years,
@@ -277,8 +288,9 @@ class CycleTradeStudy:
         
         text = f"""RECOMMENDATION: {best['name'].upper()}
 
-Performance:
-  Isp: {best['isp_vac']:.0f} s
+Performance (with cycle losses):
+  Ideal Isp: {best['isp_ideal']:.0f} s
+  Real Isp:  {best['isp_corrected']:.0f} s (-{best['isp_loss_pct']:.0f}%)
   Propellant: {best['propellant_kg']/1000:.1f} tonnes
 
 Development:
@@ -287,8 +299,7 @@ Development:
 
 vs {runner['name']}:
   {(runner['propellant_kg'] - best['propellant_kg'])/1000:+.1f}t propellant
-  ${runner['dev_cost_M'] - best['dev_cost_M']:+.0f}M cost
-  {runner['dev_years'] - best['dev_years']:+d} years"""
+  ${runner['dev_cost_M'] - best['dev_cost_M']:+.0f}M cost"""
         
         ax4.text(0.1, 0.9, text, transform=ax4.transAxes, fontsize=11,
                 color='white', fontfamily='monospace', verticalalignment='top')

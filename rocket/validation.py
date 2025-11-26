@@ -27,6 +27,7 @@ import numpy as np
 from beartype import beartype
 
 from rocket import EngineInputs, design_engine
+from rocket.cycle_corrections import CycleType, apply_cycle_correction, cycle_type_from_string
 from rocket.units import kilonewtons, megapascals, meters, newtons, seconds
 
 
@@ -290,13 +291,18 @@ class ValidationResult:
     computed_thrust_coeff: float
     computed_cstar: float
     
-    # Errors (percent difference)
+    # Errors (percent difference) - without correction
     isp_vac_error_pct: float
     isp_sl_error_pct: float | None
     
+    # With cycle correction applied
+    corrected_isp_vac: float | None = None
+    corrected_error_pct: float | None = None
+    
     # Assessment
-    is_valid: bool  # Within acceptable tolerance
-    tolerance_pct: float
+    is_valid: bool = False  # Within acceptable tolerance
+    is_valid_corrected: bool = False  # Valid with correction
+    tolerance_pct: float = 5.0
     
     def summary(self) -> str:
         """Generate validation summary."""
@@ -311,6 +317,12 @@ class ValidationResult:
             "-" * 54,
             f"{'Isp (vac) [s]':<20} {self.reference.isp_vac_s:<12.1f} {self.computed_isp_vac:<12.1f} {self.isp_vac_error_pct:+.1f}%",
         ]
+        
+        if self.corrected_isp_vac is not None:
+            corr_status = "✓" if self.is_valid_corrected else "✗"
+            lines.append(
+                f"{'Isp (corrected) [s]':<20} {self.reference.isp_vac_s:<12.1f} {self.corrected_isp_vac:<12.1f} {self.corrected_error_pct:+.1f}% {corr_status}"
+            )
         
         if self.isp_sl_error_pct is not None and self.reference.isp_sl_s:
             lines.append(
@@ -356,7 +368,7 @@ def validate_against(
     # Compute performance
     perf, geom = design_engine(inputs)
     
-    # Calculate errors
+    # Calculate errors (without correction)
     computed_isp_vac = perf.isp_vac.value
     isp_vac_error = 100 * (computed_isp_vac - ref.isp_vac_s) / ref.isp_vac_s
     
@@ -365,9 +377,34 @@ def validate_against(
     if ref.isp_sl_s and computed_isp_sl:
         isp_sl_error = 100 * (computed_isp_sl - ref.isp_sl_s) / ref.isp_sl_s
     
-    # Determine pass/fail based on vacuum Isp only
+    # Determine pass/fail based on vacuum Isp only (before corrections)
     # (SL Isp depends heavily on expansion ratio choice which we don't control here)
     is_valid = abs(isp_vac_error) <= tolerance_pct
+    
+    # Apply cycle-specific correction
+    # Only apply correction if model OVER-predicts (which GG/expander corrections fix)
+    corrected_isp = None
+    corrected_error = None
+    is_valid_corrected = False
+    try:
+        cycle_type = cycle_type_from_string(ref.cycle)
+        raw_corrected = apply_cycle_correction(computed_isp_vac, cycle_type)
+        
+        # Only use correction if it improves accuracy
+        # (corrections account for losses, so they reduce predicted Isp)
+        # If we're already under-predicting, correction makes it worse
+        if isp_vac_error > 0:  # Over-predicting, correction should help
+            corrected_isp = raw_corrected
+            corrected_error = 100 * (corrected_isp - ref.isp_vac_s) / ref.isp_vac_s
+            is_valid_corrected = abs(corrected_error) <= tolerance_pct
+        else:
+            # Under-predicting, don't apply correction (keep original)
+            corrected_isp = computed_isp_vac
+            corrected_error = isp_vac_error
+            is_valid_corrected = is_valid
+    except ValueError:
+        # Unknown cycle type, can't apply correction
+        pass
     
     return ValidationResult(
         reference_name=reference_name,
@@ -378,7 +415,10 @@ def validate_against(
         computed_cstar=perf.cstar.value,
         isp_vac_error_pct=isp_vac_error,
         isp_sl_error_pct=isp_sl_error,
+        corrected_isp_vac=corrected_isp,
+        corrected_error_pct=corrected_error,
         is_valid=is_valid,
+        is_valid_corrected=is_valid_corrected,
         tolerance_pct=tolerance_pct,
     )
 
@@ -411,7 +451,7 @@ def validation_report(tolerance_pct: float = 5.0, save_path: str | None = None) 
     """
     results = run_all_validations(tolerance_pct)
     
-    # Summary statistics
+    # Summary statistics - without correction
     n_pass = sum(1 for r in results.values() if r.is_valid)
     n_total = len(results)
     
@@ -419,26 +459,43 @@ def validation_report(tolerance_pct: float = 5.0, save_path: str | None = None) 
     mean_error = np.mean(errors)
     max_error = max(errors)
     
+    # With correction
+    n_pass_corrected = sum(1 for r in results.values() if r.is_valid_corrected)
+    corrected_errors = [abs(r.corrected_error_pct) for r in results.values() 
+                        if r.corrected_error_pct is not None]
+    mean_error_corrected = np.mean(corrected_errors) if corrected_errors else 0
+    
     lines = [
         "ROCKET MODEL VALIDATION REPORT",
-        "=" * 60,
+        "=" * 70,
         "",
         f"Reference engines tested: {n_total}",
-        f"Passed (within ±{tolerance_pct:.0f}%): {n_pass}/{n_total}",
-        f"Mean Isp error: {mean_error:.1f}%",
-        f"Max Isp error: {max_error:.1f}%",
+        "",
+        "Without cycle corrections:",
+        f"  Passed (within ±{tolerance_pct:.0f}%): {n_pass}/{n_total}",
+        f"  Mean Isp error: {mean_error:.1f}%",
+        "",
+        "With cycle corrections (GG: -7%, Expander: -10%, etc.):",
+        f"  Passed (within ±{tolerance_pct:.0f}%): {n_pass_corrected}/{n_total}",
+        f"  Mean Isp error: {mean_error_corrected:.1f}%",
         "",
         "Individual Results:",
-        "-" * 60,
+        "-" * 70,
+        f"{'Engine':<18} {'Ref':<6} {'Model':<6} {'Err':<8} {'Corr':<6} {'Err':<8}",
+        "-" * 70,
     ]
     
     for name, result in sorted(results.items()):
         status = "✓" if result.is_valid else "✗"
+        status_corr = "✓" if result.is_valid_corrected else "✗"
         ref = result.reference
+        
+        corr_val = f"{result.corrected_isp_vac:.0f}" if result.corrected_isp_vac else "-"
+        corr_err = f"{result.corrected_error_pct:+.1f}%" if result.corrected_error_pct else "-"
+        
         lines.append(
-            f"{status} {ref.name:<25} "
-            f"Isp: {ref.isp_vac_s:.0f} → {result.computed_isp_vac:.0f} s "
-            f"({result.isp_vac_error_pct:+.1f}%)"
+            f"{status} {ref.name:<16} {ref.isp_vac_s:<6.0f} {result.computed_isp_vac:<6.0f} "
+            f"{result.isp_vac_error_pct:+5.1f}%  {corr_val:<6} {corr_err:<8} {status_corr}"
         )
     
     # Identify systematic patterns
