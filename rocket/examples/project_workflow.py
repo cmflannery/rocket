@@ -324,13 +324,11 @@ Throat:    {design['throat_cm']:.2f} cm
 
 def main() -> None:
     """Run the project workflow with visualizations."""
-    # Setup
-    project_path = Path("./test_rocket_project")
-    output_path = Path("./outputs/project_dashboard")
+    # Setup - all outputs go in the project directory
+    project_path = Path("./outputs/methalox_upper_stage_study")
     
     if project_path.exists():
         shutil.rmtree(project_path)
-    output_path.mkdir(parents=True, exist_ok=True)
     
     # Create project
     project = Project(
@@ -376,8 +374,11 @@ def main() -> None:
         })
     
     # Generate design comparison dashboard
+    plots_path = project_path / "plots"
+    plots_path.mkdir(parents=True, exist_ok=True)
+    
     fig1 = plot_design_comparison(designs_data)
-    fig1.savefig(output_path / "design_comparison.png", dpi=150, 
+    fig1.savefig(plots_path / "design_comparison.png", dpi=150, 
                  bbox_inches='tight', facecolor='#1a1a2e')
     plt.close(fig1)
     
@@ -405,27 +406,18 @@ def main() -> None:
         'Chamber Pressure [MPa]',
         'Chamber Pressure Trade Study - Baseline Design'
     )
-    fig2.savefig(output_path / "trade_study.png", dpi=150, 
+    fig2.savefig(plots_path / "trade_study.png", dpi=150, 
                  bbox_inches='tight', facecolor='#1a1a2e')
     plt.close(fig2)
     
     # Generate project summary
     fig3 = plot_project_summary(project, designs_data)
-    fig3.savefig(output_path / "project_summary.png", dpi=150, 
+    fig3.savefig(plots_path / "project_summary.png", dpi=150, 
                  bbox_inches='tight', facecolor='#1a1a2e')
     plt.close(fig3)
     
-    # Output summary (minimal console output)
-    print(f"\n{'='*60}")
-    print(f"  Project: {project.name}")
-    print(f"  Designs: {len(project.list_designs())}")
-    print(f"  Results: {len(project.list_results())}")
-    print(f"{'='*60}")
-    print(f"\n  Visualizations saved to: {output_path.absolute()}")
-    print(f"    - design_comparison.png")
-    print(f"    - trade_study.png")
-    print(f"    - project_summary.png")
-    print(f"\n  Project data saved to: {project_path.absolute()}")
+    # Minimal console output - just show where to find everything
+    print(f"\n  Project saved to: {project_path.absolute()}")
     print()
 
 
