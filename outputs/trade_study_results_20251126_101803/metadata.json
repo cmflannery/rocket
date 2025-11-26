@@ -1,0 +1,9 @@
+{
+  "name": "trade_study_results",
+  "created": "2025-11-26T10:18:03.834991",
+  "files": [
+    "data/chamber_pressure_sweep.csv"
+  ],
+  "completed": "2025-11-26T10:18:03.839727",
+  "success": false
+}
