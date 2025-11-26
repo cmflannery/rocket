@@ -375,10 +375,12 @@ def full_chamber_contour(
         y_cone = np.array([])
 
     # Generate convergent circular arc (transition to throat)
+    # Arc center is at (0, Rt + R1), tangent to throat at bottom
+    # Arc goes from tangent point with cone (angle = theta_c) to throat (angle = 0)
     n_arc = num_convergent_points - len(x_cone)
-    theta_range = np.linspace(math.pi - theta_c, math.pi, n_arc)
-    x_arc = R1 * np.cos(theta_range)  # Goes from negative to 0
-    y_arc = Rt + R1 + R1 * np.sin(theta_range)  # Connects to throat
+    theta_range = np.linspace(theta_c, 0, n_arc)
+    x_arc = -R1 * np.sin(theta_range)  # Negative (upstream of throat)
+    y_arc = Rt + R1 * (1 - np.cos(theta_range))  # From y_tan down to Rt
 
     # Shift nozzle contour (it starts at x=0 at throat)
     x_nozzle = nozzle_contour.x

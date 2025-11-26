@@ -555,12 +555,10 @@ dependencies = [
     { name = "matplotlib" },
     { name = "numba" },
     { name = "numpy" },
+    { name = "rocketcea" },
 ]
 
 [package.optional-dependencies]
-cea = [
-    { name = "rocketcea" },
-]
 dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -575,10 +573,10 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
-    { name = "rocketcea", marker = "extra == 'cea'", specifier = ">=1.2" },
+    { name = "rocketcea", specifier = ">=1.2.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
 ]
-provides-extras = ["dev", "cea"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "packaging"
