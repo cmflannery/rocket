@@ -99,6 +99,11 @@ CONVERSIONS: dict[str, tuple[float, str]] = {
     # Density
     "kg/m^3": (1.0, "density"),
     "lbm/ft^3": (16.0185, "density"),
+    # Power
+    "W": (1.0, "power"),
+    "kW": (1000.0, "power"),
+    "MW": (1e6, "power"),
+    "hp": (745.7, "power"),  # Mechanical horsepower
     # Specific impulse (time dimension but special meaning)
     # Note: Isp in seconds is the same in SI and Imperial
     # Dimensionless
@@ -608,6 +613,30 @@ def kg_per_cubic_meter(value: float | int) -> Quantity:
 def dimensionless(value: float | int) -> Quantity:
     """Create a dimensionless quantity."""
     return Quantity(value, "1", "dimensionless")
+
+
+@beartype
+def watts(value: float | int) -> Quantity:
+    """Create a power quantity in Watts."""
+    return Quantity(value, "W", "power")
+
+
+@beartype
+def kilowatts(value: float | int) -> Quantity:
+    """Create a power quantity in kilowatts."""
+    return Quantity(value, "kW", "power")
+
+
+@beartype
+def megawatts(value: float | int) -> Quantity:
+    """Create a power quantity in megawatts."""
+    return Quantity(value, "MW", "power")
+
+
+@beartype
+def horsepower(value: float | int) -> Quantity:
+    """Create a power quantity in horsepower."""
+    return Quantity(value, "hp", "power")
 
 
 # =============================================================================

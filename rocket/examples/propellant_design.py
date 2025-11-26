@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Propellant-based engine design example for OpenRocketEngine.
+"""Propellant-based engine design example for Rocket.
 
 This example demonstrates the simplified workflow where you specify
 propellants and the library automatically determines combustion properties.
@@ -7,20 +7,23 @@ propellants and the library automatically determines combustion properties.
 No need to manually look up Tc, gamma, or molecular weight!
 """
 
-from openrocketengine import design_engine, plot_engine_dashboard
-from openrocketengine.engine import EngineInputs
-from openrocketengine.nozzle import full_chamber_contour, generate_nozzle_from_geometry
-from openrocketengine.units import kilonewtons, megapascals
+from rocket import OutputContext, design_engine, plot_engine_dashboard
+from rocket.engine import EngineInputs
+from rocket.nozzle import full_chamber_contour, generate_nozzle_from_geometry
+from rocket.units import kilonewtons, megapascals
 
 
 def main() -> None:
     """Run the propellant-based design example."""
     print("=" * 70)
-    print("OpenRocketEngine - Propellant-Based Design")
+    print("Rocket - Propellant-Based Design")
     print("=" * 70)
     print()
     print("Using NASA CEA (via RocketCEA) for thermochemistry calculations")
     print()
+
+    # Store all engine designs for comparison
+    designs: list[tuple[str, EngineInputs, any, any]] = []
 
     # =========================================================================
     # Design a LOX/RP-1 Engine (like Merlin)
@@ -62,6 +65,8 @@ def main() -> None:
     print(f"  Expansion Ratio: {geom1.expansion_ratio:.1f}")
     print()
 
+    designs.append(("LOX/RP-1", lox_rp1, perf1, geom1))
+
     # =========================================================================
     # Design a LOX/Methane Engine (like Raptor)
     # =========================================================================
@@ -90,6 +95,8 @@ def main() -> None:
     print(f"  Isp (SL): {perf2.isp.value:.1f} s")
     print(f"  Isp (Vac): {perf2.isp_vac.value:.1f} s")
     print()
+
+    designs.append(("LOX/CH4", lox_ch4, perf2, geom2))
 
     # =========================================================================
     # Design a LOX/LH2 Engine (like RS-25/SSME)
@@ -120,6 +127,8 @@ def main() -> None:
     print(f"  Isp (Vac): {perf3.isp_vac.value:.1f} s  <- Highest!")
     print()
 
+    designs.append(("LOX/LH2", lox_lh2, perf3, geom3))
+
     # =========================================================================
     # Comparison Summary
     # =========================================================================
@@ -131,11 +140,7 @@ def main() -> None:
     print(f"{'Engine':<20} {'Isp(SL)':<10} {'Isp(Vac)':<10} {'MW':<8} {'Tc (K)':<10}")
     print("-" * 70)
 
-    for name, inputs, perf in [
-        ("LOX/RP-1", lox_rp1, perf1),
-        ("LOX/CH4", lox_ch4, perf2),
-        ("LOX/LH2", lox_lh2, perf3),
-    ]:
+    for name, inputs, perf, _ in designs:
         print(
             f"{name:<20} "
             f"{perf.isp.value:<10.1f} "
@@ -145,22 +150,46 @@ def main() -> None:
         )
 
     print()
-    print("Note: Lower molecular weight (MW) = higher Isp")
-    print("      LH2 engines have best Isp but require large tanks (low density)")
+
+    # =========================================================================
+    # Generate Dashboards for All Engines
+    # =========================================================================
+
+    print("=" * 70)
+    print("GENERATING VISUALIZATIONS")
+    print("=" * 70)
     print()
 
-    # =========================================================================
-    # Generate Dashboard for LOX/RP-1 Engine
-    # =========================================================================
+    with OutputContext("propellant_comparison", include_timestamp=True) as ctx:
+        # Save comparison summary
+        ctx.save_summary({
+            "designs": [
+                {
+                    "name": name,
+                    "propellants": f"{inputs.name}",
+                    "isp_sl": perf.isp.value,
+                    "isp_vac": perf.isp_vac.value,
+                    "molecular_weight": inputs.molecular_weight,
+                    "chamber_temp_K": inputs.chamber_temp.to("K").value,
+                    "gamma": inputs.gamma,
+                    "thrust_kN": inputs.thrust.to("kN").value,
+                    "chamber_pressure_MPa": inputs.chamber_pressure.to("MPa").value,
+                }
+                for name, inputs, perf, _ in designs
+            ]
+        }, "comparison_summary.json")
 
-    print("Generating visualization for LOX/RP-1 engine...")
+        for _name, inputs, perf, geom in designs:
+            ctx.log(f"Generating dashboard for {inputs.name}...")
+            nozzle = generate_nozzle_from_geometry(geom)
+            contour = full_chamber_contour(inputs, geom, nozzle)
+            fig = plot_engine_dashboard(inputs, perf, geom, contour)
 
-    nozzle = generate_nozzle_from_geometry(geom1)
-    contour = full_chamber_contour(lox_rp1, geom1, nozzle)
+            safe_name = inputs.name.lower().replace("-", "_").replace(" ", "_")
+            fig.savefig(ctx.path(f"{safe_name}_dashboard.png"), dpi=150, bbox_inches="tight")
 
-    fig = plot_engine_dashboard(lox_rp1, perf1, geom1, contour)
-    fig.savefig("kerolox_engine_dashboard.png", dpi=150, bbox_inches="tight")
-    print("  Saved: kerolox_engine_dashboard.png")
+        print()
+        print(f"  All outputs saved to: {ctx.output_dir}")
 
     print()
     print("=" * 70)
@@ -170,4 +199,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

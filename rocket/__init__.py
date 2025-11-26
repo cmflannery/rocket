@@ -21,6 +21,21 @@ Example:
 __version__ = "0.3.0"
 
 # Core engine design
+# Analysis framework
+from rocket.analysis import (
+    Distribution,
+    LogNormal,
+    MultiObjectiveOptimizer,
+    Normal,
+    ParametricStudy,
+    ParetoResults,
+    Range,
+    StudyResults,
+    Triangular,
+    UncertaintyAnalysis,
+    UncertaintyResults,
+    Uniform,
+)
 from rocket.engine import (
     EngineGeometry,
     EngineInputs,
@@ -43,8 +58,19 @@ from rocket.nozzle import (
     rao_bell_contour,
 )
 
+# Output management
+from rocket.output import (
+    OutputContext,
+    clean_outputs,
+    get_default_output_dir,
+    list_outputs,
+)
+
 # Visualization
 from rocket.plotting import (
+    plot_cycle_comparison_bars,
+    plot_cycle_radar,
+    plot_cycle_tradeoff,
     plot_engine_cross_section,
     plot_engine_dashboard,
     plot_mass_breakdown,
@@ -61,6 +87,12 @@ from rocket.propellants import (
     list_database_propellants,
 )
 
+# System-level design
+from rocket.system import (
+    EngineSystemResult,
+    design_engine_system,
+    format_system_summary,
+)
 # Tank sizing
 from rocket.tanks import (
     PropellantRequirements,
@@ -100,12 +132,37 @@ __all__ = [
     "plot_performance_vs_altitude",
     "plot_engine_dashboard",
     "plot_mass_breakdown",
+    "plot_cycle_comparison_bars",
+    "plot_cycle_radar",
+    "plot_cycle_tradeoff",
     # Propellants
     "CombustionProperties",
     "get_combustion_properties",
     "get_optimal_mixture_ratio",
     "is_cea_available",
     "list_database_propellants",
+    # Output management
+    "OutputContext",
+    "get_default_output_dir",
+    "list_outputs",
+    "clean_outputs",
+    # Analysis framework
+    "ParametricStudy",
+    "UncertaintyAnalysis",
+    "MultiObjectiveOptimizer",
+    "StudyResults",
+    "UncertaintyResults",
+    "ParetoResults",
+    "Range",
+    "Distribution",
+    "Normal",
+    "Uniform",
+    "Triangular",
+    "LogNormal",
+    # System-level design
+    "EngineSystemResult",
+    "design_engine_system",
+    "format_system_summary",
     # Tanks
     "PropellantRequirements",
     "TankGeometry",

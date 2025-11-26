@@ -31,10 +31,6 @@ from rocket.isentropic import (
     thrust_coefficient,
     thrust_coefficient_vacuum,
 )
-from rocket.propellants import (
-    get_combustion_properties,
-    get_optimal_mixture_ratio,
-)
 from rocket.units import (
     Quantity,
     kelvin,
@@ -186,6 +182,11 @@ class EngineInputs:
             ... )
             >>> print(f"Tc = {inputs.chamber_temp}")
         """
+        from rocket.propellants import (
+            get_combustion_properties,
+            get_optimal_mixture_ratio,
+        )
+
         # Default exit pressure to 1 atm
         if exit_pressure is None:
             exit_pressure = pascals(101325)

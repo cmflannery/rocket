@@ -5,6 +5,7 @@ Provides plotting functions for:
 - Performance curves (Isp vs altitude, thrust vs altitude)
 - Nozzle contour visualization
 - Trade study plots
+- Cycle comparison charts
 
 All plots use matplotlib with a consistent, professional style.
 """
@@ -658,64 +659,366 @@ def plot_engine_dashboard(
     return fig
 
 
+# =============================================================================
+# Mass Breakdown Plot
+# =============================================================================
+
+
 @beartype
 def plot_mass_breakdown(
     masses: dict[str, float | int],
-    title: str = "Vehicle Mass Breakdown",
+    title: str = "Mass Breakdown",
+    figsize: tuple[float, float] = (10, 8),
 ) -> Figure:
-    """Plot a mass breakdown pie chart and bar chart.
+    """Create a mass breakdown pie chart with bar chart.
 
     Args:
-        masses: Dictionary of component names to masses in kg
+        masses: Dictionary mapping component names to masses (kg)
+        title: Plot title
+        figsize: Figure size
+
+    Returns:
+        matplotlib Figure
+    """
+    _setup_style()
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    labels = list(masses.keys())
+    values = list(masses.values())
+    total = sum(values)
+
+    # Color palette
+    colors = plt.cm.Set2(np.linspace(0, 1, len(labels)))
+
+    # Pie chart
+    ax1.pie(
+        values,
+        labels=labels,
+        autopct=lambda pct: f"{pct:.1f}%\n({pct*total/100:.0f} kg)",
+        colors=colors,
+        startangle=90,
+        pctdistance=0.75,
+    )
+    ax1.set_title("Distribution")
+
+    # Bar chart
+    bars = ax2.barh(labels, values, color=colors)
+    ax2.set_xlabel("Mass (kg)")
+    ax2.set_title("Component Masses")
+
+    # Add value labels on bars
+    for bar, val in zip(bars, values, strict=True):
+        ax2.text(
+            val + total * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:.0f} kg",
+            va="center",
+            fontsize=9,
+        )
+
+    ax2.set_xlim(0, max(values) * 1.2)
+
+    fig.suptitle(f"{title} (Total: {total:,.0f} kg)", fontsize=14, fontweight="bold")
+    fig.tight_layout()
+
+    return fig
+
+
+# =============================================================================
+# Cycle Comparison Plots
+# =============================================================================
+
+
+@beartype
+def plot_cycle_comparison_bars(
+    cycle_data: list[dict],
+    metrics: list[str] | None = None,
+    figsize: tuple[float, float] = (14, 8),
+    title: str = "Engine Cycle Comparison",
+) -> Figure:
+    """Create multi-metric bar chart comparing engine cycles.
+
+    Args:
+        cycle_data: List of dicts with keys 'name' and metric values.
+            Example: [
+                {'name': 'Pressure-Fed', 'net_isp': 320, 'efficiency': 1.0, ...},
+                {'name': 'Gas Generator', 'net_isp': 310, 'efficiency': 0.95, ...},
+            ]
+        metrics: List of metrics to plot. Defaults to common cycle metrics.
+        figsize: Figure size
         title: Plot title
 
     Returns:
         matplotlib Figure
     """
     _setup_style()
-    fig, (ax_pie, ax_bar) = plt.subplots(1, 2, figsize=(14, 6))
 
-    # Sort by mass
-    sorted_items = sorted(masses.items(), key=lambda x: x[1], reverse=True)
-    labels = [item[0] for item in sorted_items]
-    values = [item[1] for item in sorted_items]
-    total = sum(values)
+    if metrics is None:
+        metrics = ["net_isp", "efficiency", "tank_pressure_MPa", "pump_power_kW"]
 
-    # Color palette
-    colors = plt.cm.Set3(np.linspace(0, 1, len(labels)))
+    # Filter to only metrics that exist in the data
+    available_metrics = []
+    for m in metrics:
+        if all(m in d for d in cycle_data):
+            available_metrics.append(m)
 
-    # Pie chart
-    wedges, texts, autotexts = ax_pie.pie(
-        values, labels=None, autopct=lambda p: f"{p:.1f}%" if p > 3 else "",
-        colors=colors, startangle=90, counterclock=False,
-        wedgeprops=dict(linewidth=2, edgecolor="white")
-    )
-    ax_pie.set_title("Mass Distribution", fontsize=12, fontweight="bold")
+    if not available_metrics:
+        raise ValueError("No valid metrics found in cycle_data")
 
-    # Legend for pie chart
-    legend_labels = [f"{label}: {v:,.0f} kg" for label, v in zip(labels, values, strict=True)]
-    ax_pie.legend(wedges, legend_labels, loc="center left", bbox_to_anchor=(1, 0.5))
+    n_cycles = len(cycle_data)
+    n_metrics = len(available_metrics)
 
-    # Bar chart
-    y_pos = np.arange(len(labels))
-    bars = ax_bar.barh(y_pos, values, color=colors, edgecolor="black", linewidth=1)
-    ax_bar.set_yticks(y_pos)
-    ax_bar.set_yticklabels(labels)
-    ax_bar.set_xlabel("Mass (kg)")
-    ax_bar.set_title("Component Masses", fontsize=12, fontweight="bold")
-    ax_bar.grid(True, alpha=0.3, axis="x")
+    # Metric display names and units
+    metric_info = {
+        "net_isp": ("Net Isp", "s"),
+        "efficiency": ("Cycle Efficiency", "%"),
+        "tank_pressure_MPa": ("Tank Pressure", "MPa"),
+        "pump_power_kW": ("Pump Power", "kW"),
+        "turbine_power_kW": ("Turbine Power", "kW"),
+    }
 
-    # Add value labels on bars
-    for bar, val in zip(bars, values, strict=True):
-        width = bar.get_width()
-        ax_bar.text(width + total * 0.01, bar.get_y() + bar.get_height() / 2,
-                    f"{val:,.0f} kg", va="center", fontsize=9)
+    fig, axes = plt.subplots(1, n_metrics, figsize=figsize)
+    if n_metrics == 1:
+        axes = [axes]
 
-    ax_bar.set_xlim(0, max(values) * 1.15)
+    cycle_names = [d["name"] for d in cycle_data]
+    colors = [COLORS["primary"], COLORS["secondary"], COLORS["accent"], "#48A9A6", "#4B3F72"]
 
-    # Total mass annotation
-    fig.suptitle(f"{title}\nTotal: {total:,.0f} kg", fontsize=14, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    for ax, metric in zip(axes, available_metrics, strict=True):
+        values = [d.get(metric, 0) for d in cycle_data]
+
+        # Scale efficiency to percentage
+        if metric == "efficiency":
+            values = [v * 100 for v in values]
+
+        bars = ax.bar(cycle_names, values, color=colors[:n_cycles], edgecolor="white", linewidth=1.5)
+
+        # Add value labels on bars
+        for bar, val in zip(bars, values, strict=True):
+            height = bar.get_height()
+            ax.annotate(
+                f"{val:.1f}",
+                xy=(bar.get_x() + bar.get_width() / 2, height),
+                xytext=(0, 3),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=10,
+                fontweight="bold",
+            )
+
+        # Axis formatting
+        display_name, unit = metric_info.get(metric, (metric, ""))
+        ax.set_ylabel(f"{display_name} ({unit})" if unit else display_name)
+        ax.set_title(display_name, fontsize=12, fontweight="bold")
+        ax.tick_params(axis="x", rotation=15)
+        ax.set_ylim(0, max(values) * 1.2 if max(values) > 0 else 1)
+        ax.grid(axis="y", alpha=0.3)
+
+    fig.suptitle(title, fontsize=16, fontweight="bold", y=1.02)
+    fig.tight_layout()
 
     return fig
 
+
+@beartype
+def plot_cycle_radar(
+    cycle_data: list[dict],
+    metrics: list[str] | None = None,
+    figsize: tuple[float, float] = (10, 10),
+    title: str = "Cycle Comparison Radar",
+) -> Figure:
+    """Create radar/spider chart comparing cycles across normalized dimensions.
+
+    All metrics are normalized to 0-1 scale for comparison.
+
+    Args:
+        cycle_data: List of dicts with 'name' and metric values
+        metrics: Metrics to include in radar. Defaults to standard set.
+        figsize: Figure size
+        title: Plot title
+
+    Returns:
+        matplotlib Figure
+    """
+    _setup_style()
+
+    if metrics is None:
+        metrics = ["net_isp", "efficiency", "simplicity", "tank_mass_factor"]
+
+    # Filter to available metrics
+    available_metrics = []
+    for m in metrics:
+        if all(m in d for d in cycle_data):
+            available_metrics.append(m)
+
+    if len(available_metrics) < 3:
+        raise ValueError("Need at least 3 metrics for radar chart")
+
+    n_metrics = len(available_metrics)
+
+    # Metric display names
+    metric_names = {
+        "net_isp": "Performance\n(Isp)",
+        "efficiency": "Efficiency",
+        "simplicity": "Simplicity",
+        "tank_mass_factor": "Low Tank\nPressure",
+        "reliability": "Reliability",
+        "trl": "Maturity\n(TRL)",
+    }
+
+    # Normalize all metrics to 0-1 scale
+    normalized_data = []
+    for d in cycle_data:
+        norm_d = {"name": d["name"]}
+        for m in available_metrics:
+            values = [cd[m] for cd in cycle_data]
+            min_val, max_val = min(values), max(values)
+            if max_val > min_val:
+                norm_d[m] = (d[m] - min_val) / (max_val - min_val)
+            else:
+                norm_d[m] = 1.0
+        normalized_data.append(norm_d)
+
+    # Setup radar chart
+    angles = np.linspace(0, 2 * np.pi, n_metrics, endpoint=False).tolist()
+    angles += angles[:1]  # Complete the loop
+
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(polar=True))
+
+    colors = [COLORS["primary"], COLORS["secondary"], COLORS["accent"], "#48A9A6", "#4B3F72"]
+
+    for i, d in enumerate(normalized_data):
+        values = [d[m] for m in available_metrics]
+        values += values[:1]  # Complete the loop
+
+        ax.plot(angles, values, "o-", linewidth=2, color=colors[i % len(colors)], label=d["name"])
+        ax.fill(angles, values, alpha=0.25, color=colors[i % len(colors)])
+
+    # Set labels
+    labels = [metric_names.get(m, m) for m in available_metrics]
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(labels, fontsize=11)
+
+    # Radial limits
+    ax.set_ylim(0, 1.1)
+    ax.set_yticks([0.25, 0.5, 0.75, 1.0])
+    ax.set_yticklabels(["25%", "50%", "75%", "100%"], fontsize=8, alpha=0.7)
+
+    ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.0), fontsize=11)
+    ax.set_title(title, fontsize=14, fontweight="bold", y=1.08)
+
+    fig.tight_layout()
+
+    return fig
+
+
+@beartype
+def plot_cycle_tradeoff(
+    cycle_data: list[dict],
+    x_metric: str = "net_isp",
+    y_metric: str = "efficiency",
+    size_metric: str | None = None,
+    figsize: tuple[float, float] = (10, 8),
+    title: str = "Cycle Trade Space",
+) -> Figure:
+    """Create scatter plot showing cycle trade-offs.
+
+    Plot cycles on 2D trade space with optional bubble size for third dimension.
+
+    Args:
+        cycle_data: List of dicts with 'name' and metric values
+        x_metric: Metric for x-axis
+        y_metric: Metric for y-axis
+        size_metric: Optional metric for bubble size
+        figsize: Figure size
+        title: Plot title
+
+    Returns:
+        matplotlib Figure
+    """
+    _setup_style()
+
+    # Metric display info
+    metric_info = {
+        "net_isp": ("Net Isp", "s"),
+        "efficiency": ("Cycle Efficiency", ""),
+        "tank_pressure_MPa": ("Tank Pressure", "MPa"),
+        "pump_power_kW": ("Pump Power", "kW"),
+        "simplicity": ("Simplicity Score", ""),
+        "complexity": ("Complexity Score", ""),
+    }
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    x_vals = [d[x_metric] for d in cycle_data]
+    y_vals = [d[y_metric] for d in cycle_data]
+
+    # Scale efficiency to percentage for display
+    if y_metric == "efficiency":
+        y_vals = [v * 100 for v in y_vals]
+
+    colors = [COLORS["primary"], COLORS["secondary"], COLORS["accent"], "#48A9A6", "#4B3F72"]
+
+    if size_metric and all(size_metric in d for d in cycle_data):
+        sizes = [d[size_metric] for d in cycle_data]
+        # Normalize sizes for display
+        max_size = max(sizes) if max(sizes) > 0 else 1
+        normalized_sizes = [500 + 1500 * (s / max_size) for s in sizes]
+    else:
+        normalized_sizes = [800] * len(cycle_data)
+
+    for i, (x, y, s, d) in enumerate(zip(x_vals, y_vals, normalized_sizes, cycle_data, strict=True)):
+        ax.scatter(
+            x, y, s=s, c=colors[i % len(colors)], alpha=0.7, edgecolors="white", linewidth=2, zorder=5
+        )
+        # Label
+        ax.annotate(
+            d["name"],
+            xy=(x, y),
+            xytext=(10, 10),
+            textcoords="offset points",
+            fontsize=11,
+            fontweight="bold",
+            arrowprops=dict(arrowstyle="-", color="gray", alpha=0.5),
+        )
+
+    # Axis formatting
+    x_name, x_unit = metric_info.get(x_metric, (x_metric, ""))
+    y_name, y_unit = metric_info.get(y_metric, (y_metric, ""))
+
+    ax.set_xlabel(f"{x_name} ({x_unit})" if x_unit else x_name, fontsize=12)
+    ax.set_ylabel(f"{y_name} ({y_unit})" if y_unit else y_name, fontsize=12)
+
+    # Add quadrant annotations
+    x_mid = (max(x_vals) + min(x_vals)) / 2
+    y_mid = (max(y_vals) + min(y_vals)) / 2
+
+    ax.axvline(x=x_mid, color="gray", linestyle="--", alpha=0.3)
+    ax.axhline(y=y_mid, color="gray", linestyle="--", alpha=0.3)
+
+    # Expand limits slightly
+    x_range = max(x_vals) - min(x_vals)
+    y_range = max(y_vals) - min(y_vals)
+    ax.set_xlim(min(x_vals) - 0.1 * x_range, max(x_vals) + 0.15 * x_range)
+    ax.set_ylim(min(y_vals) - 0.1 * y_range, max(y_vals) + 0.15 * y_range)
+
+    ax.grid(True, alpha=0.3)
+    ax.set_title(title, fontsize=14, fontweight="bold")
+
+    # Add size legend if applicable
+    if size_metric and all(size_metric in d for d in cycle_data):
+        size_name = metric_info.get(size_metric, (size_metric, ""))[0]
+        ax.text(
+            0.02,
+            0.02,
+            f"Bubble size: {size_name}",
+            transform=ax.transAxes,
+            fontsize=9,
+            alpha=0.7,
+        )
+
+    fig.tight_layout()
+
+    return fig

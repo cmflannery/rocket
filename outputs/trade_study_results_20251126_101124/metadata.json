@@ -1,0 +1,9 @@
+{
+  "name": "trade_study_results",
+  "created": "2025-11-26T10:11:24.230830",
+  "files": [
+    "data/mixture_ratio_sweep.csv"
+  ],
+  "completed": "2025-11-26T10:11:24.235132",
+  "success": false
+}

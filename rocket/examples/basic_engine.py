@@ -11,10 +11,10 @@ liquid rocket engine:
 5. Visualize the design
 6. Export contour for CAD
 
-The example engine is similar to a small pressure-fed engine suitable
-for a student rocket project.
+All outputs are organized into a timestamped directory structure.
 """
 
+from rocket import OutputContext
 from rocket.engine import (
     EngineInputs,
     compute_geometry,
@@ -161,58 +161,83 @@ def main() -> None:
     print()
 
     # =========================================================================
-    # Step 5: Export Contour to CSV
+    # Step 5-7: Save All Outputs to Organized Directory
     # =========================================================================
 
-    print("Step 5: Exporting contour to CSV...")
+    print("Step 5-7: Saving outputs...")
     print()
 
-    nozzle_contour.to_csv("nozzle_contour.csv")
-    full_contour.to_csv("full_chamber_contour.csv")
+    # Use OutputContext to organize all outputs
+    with OutputContext("student_engine_mk1", include_timestamp=True) as ctx:
+        # Add metadata about this run
+        ctx.add_metadata("engine_name", inputs.name)
+        ctx.add_metadata("thrust_N", inputs.thrust.to("N").value)
+        ctx.add_metadata("chamber_pressure_MPa", inputs.chamber_pressure.to("MPa").value)
 
-    print("  Saved: nozzle_contour.csv")
-    print("  Saved: full_chamber_contour.csv")
-    print()
+        # Export contours to CSV (automatically goes to data/)
+        ctx.log("Exporting nozzle contours...")
+        nozzle_contour.to_csv(ctx.path("nozzle_contour.csv"))
+        full_contour.to_csv(ctx.path("full_chamber_contour.csv"))
 
-    # =========================================================================
-    # Step 6: Print Summaries
-    # =========================================================================
+        # Save text summaries (automatically goes to reports/)
+        ctx.log("Saving performance summaries...")
+        ctx.save_text(format_performance_summary(inputs, performance), "performance_summary.txt")
+        ctx.save_text(format_geometry_summary(inputs, geometry), "geometry_summary.txt")
 
-    print("Step 6: Full summaries...")
-    print()
-    print(format_performance_summary(inputs, performance))
-    print()
-    print(format_geometry_summary(inputs, geometry))
-    print()
+        # Save design summary as JSON
+        ctx.save_summary({
+            "engine_name": inputs.name,
+            "performance": {
+                "isp_sl_s": performance.isp.value,
+                "isp_vac_s": performance.isp_vac.value,
+                "cstar_m_s": performance.cstar.value,
+                "thrust_coeff_sl": performance.thrust_coeff,
+                "thrust_coeff_vac": performance.thrust_coeff_vac,
+                "exit_mach": performance.exit_mach,
+                "mdot_kg_s": performance.mdot.value,
+                "mdot_ox_kg_s": performance.mdot_ox.value,
+                "mdot_fuel_kg_s": performance.mdot_fuel.value,
+            },
+            "geometry": {
+                "throat_diameter_mm": Dt_mm,
+                "exit_diameter_mm": De_mm,
+                "chamber_diameter_mm": Dc_mm,
+                "chamber_length_mm": Lc_mm,
+                "nozzle_length_mm": Ln_mm,
+                "expansion_ratio": geometry.expansion_ratio,
+                "contraction_ratio": geometry.contraction_ratio,
+            },
+            "inputs": {
+                "thrust_N": inputs.thrust.to("N").value,
+                "chamber_pressure_Pa": inputs.chamber_pressure.to("Pa").value,
+                "chamber_temp_K": inputs.chamber_temp.to("K").value,
+                "molecular_weight": inputs.molecular_weight,
+                "gamma": inputs.gamma,
+                "mixture_ratio": inputs.mixture_ratio,
+            },
+        })
 
-    # =========================================================================
-    # Step 7: Create Visualizations
-    # =========================================================================
+        # Create visualizations (automatically goes to plots/)
+        ctx.log("Generating visualizations...")
 
-    print("Step 7: Creating visualizations...")
-    print()
+        fig1 = plot_engine_cross_section(
+            geometry, full_contour, inputs, show_dimensions=True,
+            title=f"{inputs.name} Cross-Section"
+        )
+        fig1.savefig(ctx.path("engine_cross_section.png"), dpi=150, bbox_inches="tight")
 
-    # Engine cross-section
-    fig1 = plot_engine_cross_section(
-        geometry, full_contour, inputs, show_dimensions=True, title=f"{inputs.name} Cross-Section"
-    )
-    fig1.savefig("engine_cross_section.png", dpi=150, bbox_inches="tight")
-    print("  Saved: engine_cross_section.png")
+        fig2 = plot_nozzle_contour(nozzle_contour, title=f"{inputs.name} Nozzle Contour")
+        fig2.savefig(ctx.path("nozzle_contour.png"), dpi=150, bbox_inches="tight")
 
-    # Nozzle contour detail
-    fig2 = plot_nozzle_contour(nozzle_contour, title=f"{inputs.name} Nozzle Contour")
-    fig2.savefig("nozzle_contour.png", dpi=150, bbox_inches="tight")
-    print("  Saved: nozzle_contour.png")
+        fig3 = plot_performance_vs_altitude(inputs, performance, geometry, max_altitude_km=80)
+        fig3.savefig(ctx.path("altitude_performance.png"), dpi=150, bbox_inches="tight")
 
-    # Performance vs altitude
-    fig3 = plot_performance_vs_altitude(inputs, performance, geometry, max_altitude_km=80)
-    fig3.savefig("altitude_performance.png", dpi=150, bbox_inches="tight")
-    print("  Saved: altitude_performance.png")
+        fig4 = plot_engine_dashboard(inputs, performance, geometry, full_contour)
+        fig4.savefig(ctx.path("engine_dashboard.png"), dpi=150, bbox_inches="tight")
 
-    # Complete dashboard
-    fig4 = plot_engine_dashboard(inputs, performance, geometry, full_contour)
-    fig4.savefig("engine_dashboard.png", dpi=150, bbox_inches="tight")
-    print("  Saved: engine_dashboard.png")
+        ctx.log("All outputs saved!")
+        print()
+        print(f"  Output directory: {ctx.output_dir}")
 
     print()
     print("=" * 70)
@@ -222,4 +247,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

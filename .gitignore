@@ -1,3 +1,6 @@
+# ignore outputs
+outputs/
+
 # ignore prototyping files
 *.ipynb
 

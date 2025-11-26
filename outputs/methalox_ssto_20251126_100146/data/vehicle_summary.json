@@ -1,0 +1,42 @@
+{
+  "mission": {
+    "delta_v_km_s": 9.5,
+    "target_orbit": "LEO 400 km",
+    "payload_kg": 1000
+  },
+  "engine": {
+    "name": "Methalox-500",
+    "propellants": "LOX/CH4",
+    "thrust_kN": 500.0,
+    "chamber_pressure_MPa": 10.0,
+    "isp_sl_s": 320.5256042628083,
+    "isp_vac_s": 346.6915059643235,
+    "mdot_kg_s": 159.06938469443352
+  },
+  "propellant": {
+    "lox_kg": 52550.773557232475,
+    "ch4_kg": 16422.116736635147,
+    "total_kg": 68972.89029386762,
+    "burn_time_s": 433.6025466268196
+  },
+  "tanks": {
+    "lox": {
+      "volume_m3": 47.438472185757625,
+      "diameter_m": 2.9020123520766594,
+      "length_m": 7.8560376383067245,
+      "mass_kg": 398.25268941572546
+    },
+    "ch4": {
+      "volume_m3": 40.02550932024184,
+      "diameter_m": 2.7422138148873865,
+      "length_m": 7.423447018281644,
+      "mass_kg": 280.0165139805067
+    }
+  },
+  "vehicle": {
+    "dry_mass_kg": 2578.269203396232,
+    "wet_mass_kg": 71551.15949726386,
+    "twr": 0.7125783985491686,
+    "structure_fraction": 0.022882457102664816
+  }
+}
