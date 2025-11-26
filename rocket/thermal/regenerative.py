@@ -27,7 +27,6 @@ from rocket.engine import EngineGeometry, EngineInputs, EnginePerformance
 from rocket.thermal.heat_flux import estimate_heat_flux
 from rocket.units import Quantity, kelvin, pascals
 
-
 # =============================================================================
 # Coolant Properties Database
 # =============================================================================
@@ -356,7 +355,7 @@ def check_cooling_feasibility(
 
     # Feasibility assessment
     feasible = True
-    
+
     if T_wall_estimate > T_wall_max:
         feasible = False
         warnings.append(
@@ -419,7 +418,7 @@ def format_cooling_summary(result: CoolingFeasibility) -> str:
 
     lines = [
         f"{'=' * 60}",
-        f"REGENERATIVE COOLING ANALYSIS",
+        "REGENERATIVE COOLING ANALYSIS",
         f"Status: {status}",
         f"{'=' * 60}",
         "",

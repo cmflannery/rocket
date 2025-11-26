@@ -138,10 +138,7 @@ class OutputContext:
             elif ext in {".txt", ".md", ".rst", ".log"}:
                 subdir = "reports"
 
-        if subdir:
-            full_path = self.output_dir / subdir / filename
-        else:
-            full_path = self.output_dir / filename
+        full_path = self.output_dir / subdir / filename if subdir else self.output_dir / filename
 
         # Track file for metadata
         self._metadata["files"].append(str(full_path.relative_to(self.output_dir)))

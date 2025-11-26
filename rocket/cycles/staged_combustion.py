@@ -27,7 +27,6 @@ References:
     - Humble, Henry & Larson, "Space Propulsion Analysis and Design"
 """
 
-import math
 from dataclasses import dataclass
 
 from beartype import beartype
@@ -40,8 +39,7 @@ from rocket.cycles.base import (
 )
 from rocket.engine import EngineGeometry, EngineInputs, EnginePerformance
 from rocket.tanks import get_propellant_density
-from rocket.units import Quantity, kelvin, kg_per_second, pascals, seconds
-
+from rocket.units import Quantity, kg_per_second, pascals, seconds
 
 # Typical vapor pressures for common propellants [Pa]
 VAPOR_PRESSURES: dict[str, float] = {
@@ -119,7 +117,6 @@ class StagedCombustionCycle:
 
         # Extract values
         pc = inputs.chamber_pressure.to("Pa").value
-        mdot_total = performance.mdot.to("kg/s").value
         mdot_ox = performance.mdot_ox.to("kg/s").value
         mdot_fuel = performance.mdot_fuel.to("kg/s").value
         isp = performance.isp.value

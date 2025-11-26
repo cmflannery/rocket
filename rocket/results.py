@@ -12,7 +12,7 @@ Example:
     >>> fig = plot_pareto(results, "isp_vac", "thrust_to_weight", maximize=[True, True])
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,7 +21,6 @@ from matplotlib.figure import Figure
 from numpy.typing import NDArray
 
 from rocket.analysis import StudyResults, UncertaintyResults
-
 
 # =============================================================================
 # Plot Style Configuration
@@ -251,7 +250,7 @@ def plot_2d_contour(
     ax.contour(X, Y, Z, levels=levels, colors="white", alpha=0.3, linewidths=0.5)
 
     # Colorbar
-    cbar = fig.colorbar(contour, ax=ax, label=z_metric)
+    _ = fig.colorbar(contour, ax=ax, label=z_metric)
 
     # Show evaluated points
     if show_points:

@@ -64,7 +64,7 @@ def main() -> None:
 
     print(f"  Thrust target:      {base_inputs.thrust.to('kN').value:.0f} kN")
     print(f"  Chamber pressure:   {base_inputs.chamber_pressure.to('MPa').value:.0f} MPa")
-    print(f"  Propellants:        LOX / CH4")
+    print("  Propellants:        LOX / CH4")
     print(f"  Mixture ratio:      {base_inputs.mixture_ratio}")
     print()
 
@@ -142,7 +142,7 @@ def main() -> None:
     gg_result = gas_generator.analyze(base_inputs, performance, geometry)
 
     total_pump_power_gg = (
-        gg_result.pump_power_ox.to("kW").value + 
+        gg_result.pump_power_ox.to("kW").value +
         gg_result.pump_power_fuel.to("kW").value
     )
 
@@ -191,7 +191,7 @@ def main() -> None:
     sc_result = staged_combustion.analyze(base_inputs, performance, geometry)
 
     total_pump_power_sc = (
-        sc_result.pump_power_ox.to("kW").value + 
+        sc_result.pump_power_ox.to("kW").value +
         sc_result.pump_power_fuel.to("kW").value
     )
 
@@ -237,7 +237,7 @@ def main() -> None:
         isp_gain_pct = 100 * isp_gain / results[1]["net_isp"] if results[1]["net_isp"] > 0 else 0
 
         print()
-        print(f"  Staged combustion vs Gas Generator:")
+        print("  Staged combustion vs Gas Generator:")
         print(f"    Isp gain: {isp_gain:.1f} s ({isp_gain_pct:.1f}%)")
 
     print()
@@ -260,7 +260,7 @@ def main() -> None:
             title="LOX/CH4 Engine Cycle Comparison",
         )
         fig_bars.savefig(ctx.path("cycle_comparison_bars.png"), dpi=150, bbox_inches="tight")
-        print(f"    - cycle_comparison_bars.png")
+        print("    - cycle_comparison_bars.png")
 
         # 2. Radar chart
         fig_radar = plot_cycle_radar(
@@ -269,7 +269,7 @@ def main() -> None:
             title="Cycle Trade-offs (Normalized)",
         )
         fig_radar.savefig(ctx.path("cycle_radar.png"), dpi=150, bbox_inches="tight")
-        print(f"    - cycle_radar.png")
+        print("    - cycle_radar.png")
 
         # 3. Trade-off scatter plot
         fig_tradeoff = plot_cycle_tradeoff(
@@ -280,7 +280,7 @@ def main() -> None:
             title="Performance vs Simplicity Trade Space",
         )
         fig_tradeoff.savefig(ctx.path("cycle_tradeoff.png"), dpi=150, bbox_inches="tight")
-        print(f"    - cycle_tradeoff.png")
+        print("    - cycle_tradeoff.png")
 
         # Save summary data
         ctx.save_summary({

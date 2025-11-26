@@ -32,8 +32,7 @@ from rocket.cycles.base import (
 )
 from rocket.engine import EngineGeometry, EngineInputs, EnginePerformance
 from rocket.tanks import get_propellant_density
-from rocket.units import Quantity, kg_per_second, pascals, seconds
-
+from rocket.units import Quantity, kg_per_second, pascals
 
 # Typical vapor pressures for common propellants [Pa]
 # At nominal storage temperatures
@@ -53,11 +52,11 @@ def _get_vapor_pressure(propellant: str) -> float:
     """Get vapor pressure for a propellant."""
     # Normalize name
     name = propellant.upper().replace("-", "").replace(" ", "")
-    
+
     for key, value in VAPOR_PRESSURES.items():
         if key.upper() == name:
             return value
-    
+
     # Default to low vapor pressure if unknown
     return 1000.0
 

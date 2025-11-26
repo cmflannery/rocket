@@ -153,7 +153,7 @@ def main() -> None:
     print(f"  Coolant outlet temp:     {ch4_cooling.coolant_outlet_temp.to('K').value:.0f} K")
     print(f"  Flow margin:             {ch4_cooling.flow_margin:.2f}x")
     if ch4_cooling.warnings:
-        print(f"  Warnings:")
+        print("  Warnings:")
         for w in ch4_cooling.warnings:
             print(f"    ⚠ {w}")
 

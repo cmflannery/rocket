@@ -15,7 +15,7 @@ Example:
     >>>
     >>> inputs = EngineInputs.from_propellants("LOX", "CH4", ...)
     >>> performance, geometry = design_engine(inputs)
-    >>> 
+    >>>
     >>> cycle = GasGeneratorCycle(
     ...     turbine_inlet_temp=kelvin(900),
     ...     pump_efficiency=0.70,

@@ -34,6 +34,7 @@ from typing import Any
 
 from beartype import beartype
 
+from rocket.cycles.base import CycleConfiguration, CyclePerformance, analyze_cycle
 from rocket.engine import (
     EngineGeometry,
     EngineInputs,
@@ -41,9 +42,7 @@ from rocket.engine import (
     compute_geometry,
     compute_performance,
 )
-from rocket.cycles.base import CycleConfiguration, CyclePerformance, analyze_cycle
 from rocket.thermal.regenerative import CoolingFeasibility, check_cooling_feasibility
-from rocket.units import kelvin
 
 
 @beartype

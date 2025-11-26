@@ -35,8 +35,8 @@ from rocket.thermal.heat_flux import (
     recovery_factor,
 )
 from rocket.thermal.regenerative import (
-    CoolingFeasibility,
     CoolantProperties,
+    CoolingFeasibility,
     check_cooling_feasibility,
     get_coolant_properties,
 )

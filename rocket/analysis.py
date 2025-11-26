@@ -1138,10 +1138,7 @@ class ParetoResults:
         obj_idx = self.objective_names.index(objective)
         values = self.pareto_objectives[:, obj_idx]
 
-        if self.maximize[obj_idx]:
-            best_idx = int(np.argmax(values))
-        else:
-            best_idx = int(np.argmin(values))
+        best_idx = int(np.argmax(values)) if self.maximize[obj_idx] else int(np.argmin(values))
 
         return (
             self.pareto_inputs[best_idx],

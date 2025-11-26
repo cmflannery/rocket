@@ -12,12 +12,12 @@ from typing import Protocol, runtime_checkable
 from beartype import beartype
 
 from rocket.engine import EngineGeometry, EngineInputs, EnginePerformance
-from rocket.units import Quantity, pascals, seconds, kg_per_second
+from rocket.units import Quantity, pascals
 
 
 class CycleType(Enum):
     """Engine cycle type enumeration."""
-    
+
     PRESSURE_FED = auto()
     GAS_GENERATOR = auto()
     EXPANDER = auto()
@@ -250,7 +250,7 @@ def npsh_available(
     return pascals(npsh_pa)
 
 
-@beartype 
+@beartype
 def estimate_line_losses(
     mass_flow: Quantity,
     density: float,
@@ -288,10 +288,7 @@ def estimate_line_losses(
     # Friction factor (assuming turbulent flow, smooth pipe)
     # Using Blasius correlation as approximation
     Re = density * V * D / 1e-3  # Approximate viscosity
-    if Re > 2300:
-        f = 0.316 / Re ** 0.25
-    else:
-        f = 64 / Re
+    f = 0.316 / Re ** 0.25 if Re > 2300 else 64 / Re
 
     # Pipe friction losses
     dp_pipe = f * (L / D) * q

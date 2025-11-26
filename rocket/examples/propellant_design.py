@@ -179,7 +179,7 @@ def main() -> None:
             ]
         }, "comparison_summary.json")
 
-        for name, inputs, perf, geom in designs:
+        for _name, inputs, perf, geom in designs:
             ctx.log(f"Generating dashboard for {inputs.name}...")
             nozzle = generate_nozzle_from_geometry(geom)
             contour = full_chamber_contour(inputs, geom, nozzle)

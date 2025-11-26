@@ -17,12 +17,11 @@ Disadvantages:
 
 Examples:
 - SpaceX Merlin (LOX/RP-1)
-- Rocketdyne F-1 (LOX/RP-1)  
+- Rocketdyne F-1 (LOX/RP-1)
 - RS-68 (LOX/LH2)
 - Vulcain (LOX/LH2)
 """
 
-import math
 from dataclasses import dataclass
 
 from beartype import beartype
@@ -30,15 +29,12 @@ from beartype import beartype
 from rocket.cycles.base import (
     CyclePerformance,
     CycleType,
-    estimate_line_losses,
     npsh_available,
     pump_power,
-    turbine_power,
 )
 from rocket.engine import EngineGeometry, EngineInputs, EnginePerformance
 from rocket.tanks import get_propellant_density
 from rocket.units import Quantity, kelvin, kg_per_second, pascals, seconds
-
 
 # Typical vapor pressures for common propellants [Pa]
 VAPOR_PRESSURES: dict[str, float] = {
@@ -219,8 +215,8 @@ class GasGeneratorCycle:
             )
 
         # GG propellant split
-        mdot_gg_ox = mdot_gg * self.gg_mixture_ratio / (1 + self.gg_mixture_ratio)
-        mdot_gg_fuel = mdot_gg / (1 + self.gg_mixture_ratio)
+        # mdot_gg_ox = mdot_gg * self.gg_mixture_ratio / (1 + self.gg_mixture_ratio)
+        # mdot_gg_fuel = mdot_gg / (1 + self.gg_mixture_ratio)
 
         # Net performance calculation
         # The GG exhaust has much lower velocity than main chamber
@@ -238,7 +234,7 @@ class GasGeneratorCycle:
         # But we've "spent" mdot_gg propellant for low-Isp exhaust
         F_main = thrust
         net_thrust = F_main  # GG exhaust typically dumps to atmosphere
-        
+
         # Effective total mass flow (main + GG)
         mdot_effective = mdot_total  # GG flow comes from same tanks
 
@@ -333,10 +329,7 @@ def estimate_turbopump_mass(
 
     # Historical correlation: mass ~ k * P^0.6
     # k varies by propellant type and technology level
-    if "LH2" in propellant_type.upper():
-        k = 0.015  # LH2 pumps are larger due to low density
-    else:
-        k = 0.008  # LOX/RP-1, LOX/CH4
+    k = 0.015 if "LH2" in propellant_type.upper() else 0.008  # LH2 pumps are larger due to low density
 
     mass = k * P ** 0.6
 
