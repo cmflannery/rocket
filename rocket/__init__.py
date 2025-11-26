@@ -105,6 +105,18 @@ from rocket.tanks import (
     size_tank,
 )
 
+# Validation against real engines
+from rocket.validation import (
+    ReferenceEngine,
+    ValidationResult,
+    describe_reference,
+    get_reference,
+    list_reference_engines,
+    run_all_validations,
+    validate_against,
+    validation_report,
+)
+
 __all__ = [
     # Version
     "__version__",
@@ -172,4 +184,13 @@ __all__ = [
     "list_propellants",
     "list_materials",
     "format_tank_summary",
+    # Validation
+    "ReferenceEngine",
+    "ValidationResult",
+    "validate_against",
+    "validation_report",
+    "run_all_validations",
+    "get_reference",
+    "describe_reference",
+    "list_reference_engines",
 ]
