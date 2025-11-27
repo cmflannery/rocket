@@ -101,7 +101,7 @@ def run_orbital_simulation():
     s1_dry = 3000.0   # kg
     s1_prop = 22000.0 # kg
     s2_dry = 500.0    # kg
-    s2_prop = 4500.0  # kg
+    s2_prop = 6500.0  # kg (increased for orbital insertion - final push!)
     payload = 300.0   # kg
 
     total_mass = s1_dry + s1_prop + s2_dry + s2_prop + payload
@@ -222,15 +222,15 @@ def run_orbital_simulation():
     v_verticals = [0.0]
     v_horizontals = [state.speed]
     flight_path_angles = [90.0]  # Start vertical
+    thrusts = [0.0]  # Thrust magnitude
+    accelerations = [0.0]  # Total acceleration magnitude
+    stages = [1]  # Current stage number
 
     stage = 1
     s1_remaining = s1_prop
     s2_remaining = s2_prop
     staging_time = None
     seco_time = None
-
-    # Gravity turn parameters
-    pitch_kick_start = 10.0
 
     # For orbit tracking
     start_lon = lon_deg
@@ -303,6 +303,10 @@ def run_orbital_simulation():
                 v_verticals.append(v_v)
                 v_horizontals.append(v_h)
                 flight_path_angles.append(flight_path_angle(state.position, state.velocity))
+                thrusts.append(0.0)
+                accel = np.linalg.norm(state_dot.velocity_dot) / 9.81
+                accelerations.append(accel)
+                stages.append(1.5)  # Coast between stages
 
             print(f"   SES-2 T+{state.time:.1f}s")
             continue
@@ -320,28 +324,28 @@ def run_orbital_simulation():
         else:
             east = np.array([0.0, 1.0, 0.0])
 
-        # Programmed pitch profile (angle from vertical in degrees)
-        # More gradual turn to maintain altitude gain
-        if t < pitch_kick_start:
-            # Vertical ascent - clear the tower
-            pitch_from_vertical_deg = 0.0
-        elif t < 30:
-            # Initial pitch kick: 0 to 5 degrees over 20s
-            pitch_from_vertical_deg = 5.0 * (t - pitch_kick_start) / (30 - pitch_kick_start)
-        elif t < 60:
-            # Gradual pitchover: 5 to 25 degrees
-            pitch_from_vertical_deg = 5.0 + 20.0 * (t - 30) / 30
-        elif t < 100:
-            # Continue pitchover: 25 to 60 degrees  
-            pitch_from_vertical_deg = 25.0 + 35.0 * (t - 60) / 40
-        elif t < 150:
-            # Final pitchover: 60 to 85 degrees (near horizontal)
-            pitch_from_vertical_deg = 60.0 + 25.0 * (t - 100) / 50
-        else:
-            # Hold near-horizontal for orbital insertion
-            pitch_from_vertical_deg = 85.0
-        
-        pitch_rad = np.radians(pitch_from_vertical_deg)
+        # BALANCED PITCH PROGRAM for orbital insertion
+        # Balance between altitude gain (escape atmosphere) and horizontal velocity
+        #
+        # Key insight from literature: Real rockets reach ~100km+ before going fully horizontal
+
+        if alt < 500:  # Below 500m - straight up to clear pad
+            pitch_from_vert_deg = 0.0
+        elif alt < 5000:  # 0.5-5 km: gradual pitch to 12°
+            pitch_from_vert_deg = 12.0 * (alt - 500) / (5000 - 500)
+        elif alt < 15000:  # 5-15 km: 12° to 45°
+            pitch_from_vert_deg = 12.0 + 33.0 * (alt - 5000) / (15000 - 5000)
+        elif alt < 35000:  # 15-35 km: 45° to 68°
+            pitch_from_vert_deg = 45.0 + 23.0 * (alt - 15000) / (35000 - 15000)
+        elif alt < 60000:  # 35-60 km: 68° to 76°
+            pitch_from_vert_deg = 68.0 + 8.0 * (alt - 35000) / (60000 - 35000)
+        elif alt < 90000:  # 60-90 km: 76° to 83° (approaching horizontal)
+            pitch_from_vert_deg = 76.0 + 7.0 * (alt - 60000) / (90000 - 60000)
+        else:  # Above 90 km: hold 83° (more horizontal for circularization)
+            pitch_from_vert_deg = 83.0
+
+        # Convert to direction vector
+        pitch_rad = np.radians(pitch_from_vert_deg)
         target_direction = np.cos(pitch_rad) * r_hat + np.sin(pitch_rad) * east
         target_direction = target_direction / np.linalg.norm(target_direction)
 
@@ -371,7 +375,8 @@ def run_orbital_simulation():
             angle = np.arccos(np.clip(np.dot(body_x, target_direction), -1, 1))
 
             # Apply only a fraction of the correction per timestep (rate limiting)
-            max_rate = np.radians(5.0)  # 5 deg/s max attitude rate
+            # Real rockets have limited gimbal authority
+            max_rate = np.radians(2.0)  # 2 deg/s max attitude rate (conservative)
             angle = np.clip(angle, -max_rate * dt, max_rate * dt)
 
             # Small rotation quaternion
@@ -468,6 +473,11 @@ def run_orbital_simulation():
         v_verticals.append(v_vertical)
         v_horizontals.append(v_horizontal)
         flight_path_angles.append(flight_path_angle(state.position, state.velocity))
+        thrusts.append(thrust_mag)
+        # Compute total acceleration (thrust + gravity + drag) / mass
+        accel = np.linalg.norm(state_dot.velocity_dot) / 9.81  # in G's
+        accelerations.append(accel)
+        stages.append(stage)
 
         step += 1
         # Print progress - more frequent during powered flight, less during coast
@@ -540,9 +550,17 @@ def run_orbital_simulation():
         'v_verticals': np.array(v_verticals),
         'v_horizontals': np.array(v_horizontals),
         'flight_path_angles': np.array(flight_path_angles),
+        'thrusts': np.array(thrusts),
+        'accelerations': np.array(accelerations),
+        'stages': np.array(stages),
         'staging_time': staging_time,
         'seco_time': seco_time,
         'orbit_complete': orbit_complete,
+        's1_dry': s1_dry,
+        's2_dry': s2_dry,
+        's1_prop': s1_prop,
+        's2_prop': s2_prop,
+        'payload': payload,
     }
 
     max_alt = np.max(data['altitudes']) / 1000
@@ -573,13 +591,18 @@ def run_orbital_simulation():
 
 
 def create_visualization(data):
-    """Create 3D visualization of orbital trajectory."""
+    """Create comprehensive visualization of orbital trajectory."""
     times = data['times']
     positions = data['positions']
     altitudes = data['altitudes'] / 1000
     v_horizontals = data['v_horizontals']
     v_verticals = data['v_verticals']
     flight_path_angles = data['flight_path_angles']
+    masses = data['masses']
+    thrusts = data['thrusts']
+    accelerations = data['accelerations']
+    staging_time = data.get('staging_time')
+    seco_time = data.get('seco_time')
 
     # Compute ground track (lat/lon)
     lats, lons = [], []
@@ -590,21 +613,23 @@ def create_visualization(data):
     lats = np.array(lats)
     lons = np.array(lons)
 
-    # Create figure
+    # Create figure with 3 rows x 2 cols for more diagnostic plots
     fig = make_subplots(
-        rows=2, cols=2,
+        rows=3, cols=2,
         specs=[
-            [{"type": "scene"}, {"type": "xy"}],
+            [{"type": "scene", "rowspan": 2}, {"type": "xy"}],
+            [None, {"type": "xy"}],
             [{"type": "xy"}, {"type": "xy"}],
         ],
         subplot_titles=(
             "3D Trajectory (ECI Frame)",
             "Altitude & Velocities",
+            "Mass & Thrust",
             "Ground Track",
-            "Flight Path Angle"
+            "Acceleration & Flight Path Angle"
         ),
-        horizontal_spacing=0.08,
-        vertical_spacing=0.1,
+        horizontal_spacing=0.10,
+        vertical_spacing=0.08,
     )
 
     # 3D trajectory in ECI
@@ -649,33 +674,41 @@ def create_visualization(data):
         name=f"SECO ({v_horizontals[-1]:.0f} m/s)",
     ), row=1, col=1)
 
-    # Altitude and velocities
+    # Plot 1 (row 1, col 2): Altitude and velocities
     fig.add_trace(go.Scatter(x=times, y=altitudes, name='Altitude (km)',
                              line=dict(color='cyan')), row=1, col=2)
     fig.add_trace(go.Scatter(x=times, y=v_horizontals, name='V_horizontal (m/s)',
                              line=dict(color='orange')), row=1, col=2)
     fig.add_trace(go.Scatter(x=times, y=v_verticals, name='V_vertical (m/s)',
                              line=dict(color='lime', dash='dot')), row=1, col=2)
-
+    
     # Orbital velocity reference
     v_orb = orbital_velocity(altitudes[-1] * 1000)
     fig.add_trace(go.Scatter(x=[times[0], times[-1]], y=[v_orb, v_orb],
                              name=f'V_orbital ({v_orb:.0f} m/s)',
                              line=dict(dash='dash', color='red')), row=1, col=2)
+    
+    # Plot 2 (row 2, col 2): Mass and Thrust  
+    fig.add_trace(go.Scatter(x=times, y=masses/1000, name='Mass (tons)',
+                             line=dict(color='purple')), row=2, col=2)
+    fig.add_trace(go.Scatter(x=times, y=thrusts/1000, name='Thrust (kN)',
+                             line=dict(color='red')), row=2, col=2)
 
-    # Ground track
+    # Plot 3 (row 3, col 1): Ground track
     fig.add_trace(go.Scatter(x=lons, y=lats, mode='lines',
                              line=dict(color='orange', width=3),
-                             name='Ground Track'), row=2, col=1)
+                             name='Ground Track'), row=3, col=1)
     fig.add_trace(go.Scatter(x=[lons[0]], y=[lats[0]], mode='markers',
                              marker=dict(size=10, color='lime'),
-                             name='Launch Site'), row=2, col=1)
+                             name='Launch Site'), row=3, col=1)
 
-    # Flight path angle
-    fig.add_trace(go.Scatter(x=times, y=flight_path_angles, name='Flight Path γ',
-                             line=dict(color='magenta')), row=2, col=2)
+    # Plot 4 (row 3, col 2): Acceleration and Flight path angle
+    fig.add_trace(go.Scatter(x=times, y=accelerations, name='Acceleration (G)',
+                             line=dict(color='cyan')), row=3, col=2)
+    fig.add_trace(go.Scatter(x=times, y=flight_path_angles, name='Flight Path γ (°)',
+                             line=dict(color='magenta')), row=3, col=2)
     fig.add_trace(go.Scatter(x=[times[0], times[-1]], y=[0, 0],
-                             name='Horizontal', line=dict(dash='dash', color='gray')), row=2, col=2)
+                             name='Horizontal', line=dict(dash='dash', color='gray')), row=3, col=2)
 
     # Update layout
     fig.update_scenes(
@@ -686,16 +719,22 @@ def create_visualization(data):
         camera=dict(eye=dict(x=1.5, y=1.5, z=0.5)),
     )
 
+    # Update axes labels
     fig.update_xaxes(title_text="Time (s)", row=1, col=2)
     fig.update_yaxes(title_text="Value", row=1, col=2)
-    fig.update_xaxes(title_text="Longitude (°)", row=2, col=1)
-    fig.update_yaxes(title_text="Latitude (°)", row=2, col=1)
+    
     fig.update_xaxes(title_text="Time (s)", row=2, col=2)
-    fig.update_yaxes(title_text="Angle (°)", row=2, col=2)
+    fig.update_yaxes(title_text="Mass (tons) / Thrust (kN)", row=2, col=2)
+    
+    fig.update_xaxes(title_text="Longitude (°)", row=3, col=1)
+    fig.update_yaxes(title_text="Latitude (°)", row=3, col=1)
+    
+    fig.update_xaxes(title_text="Time (s)", row=3, col=2)
+    fig.update_yaxes(title_text="Acceleration (G) / Flight Path (°)", row=3, col=2)
 
     fig.update_layout(
-        title=dict(text="🚀 Orbital Launch (Spherical Earth ECI)", font=dict(size=24), x=0.5),
-        height=1000,
+        title=dict(text="🚀 Orbital Launch Simulation (Spherical Earth ECI)", font=dict(size=24), x=0.5),
+        height=1400,  # Increased height for 3 rows
         showlegend=True,
         template='plotly_dark',
     )
