@@ -12,7 +12,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from rocket.environment.gravity import R_EARTH_EQ, orbital_velocity
+from rocket.environment.gravity import MU_EARTH, R_EARTH_EQ, orbital_velocity
 
 
 def plot_orbital_dashboard(
@@ -476,28 +476,100 @@ def plot_orbit_animation(
     ))
 
     # =========================================================================
-    # Animation: Moving satellite marker
+    # Animation: Moving satellite marker with telemetry
     # =========================================================================
 
+    # Compute additional telemetry for display
+    # Inclinations (if not provided)
+    if 'inclinations' in data:
+        inclinations = data['inclinations']
+    else:
+        inclinations = np.zeros(len(times))
+        for i in range(len(times)):
+            h_vec = np.cross(positions[i], velocities[i])
+            h_mag = np.linalg.norm(h_vec)
+            if h_mag > 0:
+                inclinations[i] = np.degrees(np.arccos(np.clip(h_vec[2] / h_mag, -1, 1)))
+
     # Downsample for smooth animation
-    n_frames = min(200, len(times))
+    n_frames = min(300, len(times))
     frame_indices = np.linspace(0, len(times)-1, n_frames, dtype=int)
 
-    # Create frames
+    # Create frames with telemetry annotation updates
     frames = []
+    satellite_trace_idx = len(fig.data)  # Will be the satellite marker
+
     for i, idx in enumerate(frame_indices):
+        # Get current telemetry
+        t = times[idx]
+        alt_km = altitudes[idx] / 1000.0
+        spd = speeds[idx]
+        inc = inclinations[idx] if idx < len(inclinations) else 0
+        ecc = eccentricities[idx] if idx < len(eccentricities) else 0
+        phase_num = phases[idx] if idx < len(phases) else 1
+        phase_str = phase_names.get(phase_num, f'Phase {phase_num}')
+
+        # Calculate apogee/perigee from current state
+        r = np.linalg.norm(positions[idx])
+        v = speeds[idx]
+        energy = v**2 / 2 - MU_EARTH / r
+        if abs(energy) > 1e-10:
+            sma = -MU_EARTH / (2 * energy)
+            h_vec = np.cross(positions[idx], velocities[idx])
+            ecc_vec = np.cross(velocities[idx], h_vec) / MU_EARTH - positions[idx] / r
+            ecc_now = np.linalg.norm(ecc_vec)
+            if ecc_now < 1.0:
+                apo_km = (sma * (1 + ecc_now) - R_EARTH_EQ) / 1000
+                peri_km = (sma * (1 - ecc_now) - R_EARTH_EQ) / 1000
+            else:
+                apo_km = 9999
+                peri_km = (sma * (1 - ecc_now) - R_EARTH_EQ) / 1000
+        else:
+            apo_km = alt_km
+            peri_km = alt_km
+
         frame = go.Frame(
             data=[
                 go.Scatter3d(
                     x=[pos_km[idx, 0]], y=[pos_km[idx, 1]], z=[pos_km[idx, 2]],
                     mode='markers',
-                    marker=dict(size=12, color='white', symbol='circle',
+                    marker=dict(size=14, color='white', symbol='circle',
                                line=dict(color='black', width=2)),
                     name='Satellite'
                 )
             ],
             name=str(i),
-            traces=[len(fig.data)]  # Index of the satellite trace
+            traces=[satellite_trace_idx],
+            layout=go.Layout(
+                annotations=[
+                    # Telemetry box (top-right)
+                    dict(
+                        text=(
+                            f"<b>T+{t:.0f}s</b><br>"
+                            f"━━━━━━━━━━━━<br>"
+                            f"<b>Alt:</b> {alt_km:.1f} km<br>"
+                            f"<b>Speed:</b> {spd:.0f} m/s<br>"
+                            f"<b>Inc:</b> {inc:.1f}°<br>"
+                            f"━━━━━━━━━━━━<br>"
+                            f"<b>Apo:</b> {apo_km:.0f} km<br>"
+                            f"<b>Peri:</b> {peri_km:.0f} km<br>"
+                            f"<b>Ecc:</b> {ecc:.4f}<br>"
+                            f"━━━━━━━━━━━━<br>"
+                            f"<b>{phase_str}</b>"
+                        ),
+                        showarrow=False,
+                        x=0.98, y=0.98,
+                        xref="paper", yref="paper",
+                        xanchor="right", yanchor="top",
+                        font=dict(size=11, color='white', family='monospace'),
+                        bgcolor='rgba(0,0,0,0.8)',
+                        bordercolor='cyan',
+                        borderwidth=1,
+                        borderpad=10,
+                        align='left'
+                    )
+                ]
+            )
         )
         frames.append(frame)
 
@@ -507,7 +579,7 @@ def plot_orbit_animation(
     fig.add_trace(go.Scatter3d(
         x=[pos_km[0, 0]], y=[pos_km[0, 1]], z=[pos_km[0, 2]],
         mode='markers',
-        marker=dict(size=12, color='white', symbol='circle',
+        marker=dict(size=14, color='white', symbol='circle',
                    line=dict(color='black', width=2)),
         name='Satellite',
         showlegend=False
@@ -575,6 +647,34 @@ def plot_orbit_animation(
                         }]
                     )
                 ]
+            )
+        ],
+        annotations=[
+            # Initial telemetry display
+            dict(
+                text=(
+                    f"<b>T+{times[0]:.0f}s</b><br>"
+                    f"━━━━━━━━━━━━<br>"
+                    f"<b>Alt:</b> {altitudes[0]/1000:.1f} km<br>"
+                    f"<b>Speed:</b> {speeds[0]:.0f} m/s<br>"
+                    f"<b>Inc:</b> {inclinations[0] if len(inclinations) > 0 else 0:.1f}°<br>"
+                    f"━━━━━━━━━━━━<br>"
+                    f"<b>Apo:</b> {altitudes[apogee_idx]/1000:.0f} km<br>"
+                    f"<b>Peri:</b> {altitudes[perigee_idx]/1000:.0f} km<br>"
+                    f"<b>Ecc:</b> {eccentricities[0]:.4f}<br>"
+                    f"━━━━━━━━━━━━<br>"
+                    f"<b>{phase_names.get(phases[0], 'Phase 1')}</b>"
+                ),
+                showarrow=False,
+                x=0.98, y=0.98,
+                xref="paper", yref="paper",
+                xanchor="right", yanchor="top",
+                font=dict(size=11, color='white', family='monospace'),
+                bgcolor='rgba(0,0,0,0.8)',
+                bordercolor='cyan',
+                borderwidth=1,
+                borderpad=10,
+                align='left'
             )
         ],
         sliders=[{
