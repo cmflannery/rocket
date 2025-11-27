@@ -66,6 +66,50 @@ def flight_path_angle(position, velocity):
     return np.degrees(np.arctan2(v_radial, v_tangent))
 
 
+def compute_orbital_elements(position, velocity):
+    """Compute orbital elements from state vectors.
+    
+    Returns:
+        apogee_alt: Apogee altitude above Earth surface [m]
+        perigee_alt: Perigee altitude above Earth surface [m]  
+        semi_major: Semi-major axis [m]
+        eccentricity: Orbital eccentricity
+    """
+    from rocket.environment.gravity import MU_EARTH, R_EARTH_EQ
+    
+    r = np.linalg.norm(position)
+    v = np.linalg.norm(velocity)
+    
+    # Specific orbital energy
+    energy = v**2 / 2 - MU_EARTH / r
+    
+    # Semi-major axis (negative for hyperbolic)
+    if abs(energy) < 1e-10:
+        # Parabolic - very high apogee
+        return 1e9, r - R_EARTH_EQ, 1e9, 1.0
+    
+    semi_major = -MU_EARTH / (2 * energy)
+    
+    # Specific angular momentum
+    h = np.cross(position, velocity)
+    h_mag = np.linalg.norm(h)
+    
+    # Eccentricity
+    ecc_vec = np.cross(velocity, h) / MU_EARTH - position / r
+    eccentricity = np.linalg.norm(ecc_vec)
+    
+    # Apogee and perigee
+    if eccentricity >= 1.0:
+        # Hyperbolic/parabolic - escaping
+        apogee_alt = 1e9
+        perigee_alt = semi_major * (1 - eccentricity) - R_EARTH_EQ
+    else:
+        apogee_alt = semi_major * (1 + eccentricity) - R_EARTH_EQ
+        perigee_alt = semi_major * (1 - eccentricity) - R_EARTH_EQ
+    
+    return apogee_alt, perigee_alt, semi_major, eccentricity
+
+
 def run_orbital_simulation():
     """Run orbital launch simulation in ECI coordinates."""
     print("=" * 70)
@@ -98,10 +142,11 @@ def run_orbital_simulation():
     s2_perf, _ = design_engine(s2_inputs)
 
     # Mass budget (optimized for orbit)
-    s1_dry = 3000.0   # kg
-    s1_prop = 22000.0 # kg
-    s2_dry = 500.0    # kg
-    s2_prop = 6500.0  # kg (increased for orbital insertion - final push!)
+    # Improved design with better mass ratios
+    s1_dry = 2500.0   # kg (lighter structure)
+    s1_prop = 24000.0 # kg (more propellant)
+    s2_dry = 400.0    # kg (lighter upper stage)
+    s2_prop = 7000.0  # kg (more propellant for circularization)
     payload = 300.0   # kg
 
     total_mass = s1_dry + s1_prop + s2_dry + s2_prop + payload
@@ -212,7 +257,7 @@ def run_orbital_simulation():
     dt = 0.01  # Smaller timestep for stability
     t_max = 6000.0  # Enough time for one orbit (~90 min for LEO)
 
-    # Storage
+    # Storage for main vehicle
     times = [0.0]
     positions = [state.position.copy()]
     velocities = [state.velocity.copy()]
@@ -225,12 +270,39 @@ def run_orbital_simulation():
     thrusts = [0.0]  # Thrust magnitude
     accelerations = [0.0]  # Total acceleration magnitude
     stages = [1]  # Current stage number
+    
+    # Storage for stage 1 after separation (will track its ballistic trajectory)
+    s1_times = []
+    s1_positions = []
+    s1_velocities = []
+    s1_altitudes = []
+    s1_state = None  # Will be set at staging
 
     stage = 1
     s1_remaining = s1_prop
     s2_remaining = s2_prop
     staging_time = None
     seco_time = None
+    circularization_burn_time = None
+    
+    # ==========================================================================
+    # HOHMANN TRANSFER GUIDANCE
+    # ==========================================================================
+    # Target orbit altitude (200 km LEO)
+    TARGET_ORBIT_ALT = 200e3  # meters
+    
+    # Circular velocity at target altitude
+    v_circular_target = orbital_velocity(TARGET_ORBIT_ALT)
+    print(f"   Target orbit: {TARGET_ORBIT_ALT/1000:.0f} km, V_circular={v_circular_target:.0f} m/s")
+    
+    # Track burn phases:
+    # Phase 1: Injection burn - burn until apogee reaches target altitude
+    # Phase 2: Coast to apogee
+    # Phase 3: Circularization burn - burn until v_horizontal = v_circular
+    s2_burn_phase = 1
+    apogee_reached = False
+    prev_fpa = flight_path_angles[0]  # Previous flight path angle for apogee detection
+    circularization_complete = False
 
     # For orbit tracking
     start_lon = lon_deg
@@ -261,6 +333,21 @@ def run_orbital_simulation():
             print(f"   MECO T+{t:.1f}s: alt={alt/1000:.1f}km, v={speed:.0f}m/s, v_h={v_horizontal:.0f}m/s, γ={fpa:.1f}°")
             staging_time = t
             stage = 2
+            
+            # Save stage 1 state for ballistic propagation
+            s1_state = State(
+                position=state.position.copy(),
+                velocity=state.velocity.copy(),
+                quaternion=state.quaternion.copy(),
+                angular_velocity=np.zeros(3),  # Stage tumbles
+                mass=s1_dry,  # Just the empty stage
+                time=state.time,
+                flat_earth=False,
+            )
+            s1_times.append(state.time)
+            s1_positions.append(state.position.copy())
+            s1_velocities.append(state.velocity.copy())
+            s1_altitudes.append(alt)
 
             new_mass = s2_dry + s2_remaining + payload
             state = State(
@@ -324,25 +411,24 @@ def run_orbital_simulation():
         else:
             east = np.array([0.0, 1.0, 0.0])
 
-        # BALANCED PITCH PROGRAM for orbital insertion
-        # Balance between altitude gain (escape atmosphere) and horizontal velocity
-        #
-        # Key insight from literature: Real rockets reach ~100km+ before going fully horizontal
+        # OPTIMIZED PITCH PROGRAM - Minimize gravity losses
+        # More aggressive horizontal turn to reduce gravity losses
+        # Goal: Get horizontal quickly while above atmosphere
 
         if alt < 500:  # Below 500m - straight up to clear pad
             pitch_from_vert_deg = 0.0
         elif alt < 5000:  # 0.5-5 km: gradual pitch to 12°
             pitch_from_vert_deg = 12.0 * (alt - 500) / (5000 - 500)
-        elif alt < 15000:  # 5-15 km: 12° to 45°
-            pitch_from_vert_deg = 12.0 + 33.0 * (alt - 5000) / (15000 - 5000)
-        elif alt < 35000:  # 15-35 km: 45° to 68°
-            pitch_from_vert_deg = 45.0 + 23.0 * (alt - 15000) / (35000 - 15000)
-        elif alt < 60000:  # 35-60 km: 68° to 76°
-            pitch_from_vert_deg = 68.0 + 8.0 * (alt - 35000) / (60000 - 35000)
-        elif alt < 90000:  # 60-90 km: 76° to 83° (approaching horizontal)
-            pitch_from_vert_deg = 76.0 + 7.0 * (alt - 60000) / (90000 - 60000)
-        else:  # Above 90 km: hold 83° (more horizontal for circularization)
-            pitch_from_vert_deg = 83.0
+        elif alt < 15000:  # 5-15 km: 12° to 40°
+            pitch_from_vert_deg = 12.0 + 28.0 * (alt - 5000) / (15000 - 5000)
+        elif alt < 30000:  # 15-30 km: 40° to 65°
+            pitch_from_vert_deg = 40.0 + 25.0 * (alt - 15000) / (30000 - 15000)
+        elif alt < 60000:  # 30-60 km: 65° to 78°
+            pitch_from_vert_deg = 65.0 + 13.0 * (alt - 30000) / (60000 - 30000)
+        elif alt < 100000:  # 60-100 km: 78° to 85°
+            pitch_from_vert_deg = 78.0 + 7.0 * (alt - 60000) / (100000 - 60000)
+        else:  # Above 100 km: hold 85-87° (nearly horizontal for circularization)
+            pitch_from_vert_deg = 85.0 + min(2.0, (alt - 100000) / 50000)
 
         # Convert to direction vector
         pitch_rad = np.radians(pitch_from_vert_deg)
@@ -409,16 +495,82 @@ def run_orbital_simulation():
             )
 
         # =====================================================================
-        # Propulsion
+        # Propulsion - Hohmann Transfer (Two-burn orbital insertion)
         # =====================================================================
+        # Compute current orbital elements for guidance
+        apogee_alt, perigee_alt, semi_major, eccentricity = compute_orbital_elements(
+            state.position, state.velocity
+        )
+        
+        # Circular velocity at current altitude
+        v_circular_here = orbital_velocity(alt)
+        
         if stage == 1 and s1_remaining > 0:
+            # Stage 1: Full thrust
             thrust_mag, mdot = s1_throttle.at(1.0, alt)
             s1_remaining -= mdot * dt
-        elif stage == 2 and s2_remaining > 0:
-            thrust_mag, mdot = s2_throttle.at(1.0, alt)
-            s2_remaining -= mdot * dt
+        elif stage == 2 and not circularization_complete:
+            # Stage 2: Hohmann transfer guidance
+            
+            if s2_burn_phase == 1:
+                # PHASE 1: Injection burn
+                # Burn until predicted apogee reaches target altitude
+                if apogee_alt < TARGET_ORBIT_ALT * 0.98 and s2_remaining > 0:
+                    thrust_mag, mdot = s2_throttle.at(1.0, alt)
+                    s2_remaining -= mdot * dt
+                else:
+                    # Injection burn complete - apogee at target
+                    print(f"   Injection burn complete T+{t:.1f}s:")
+                    print(f"     alt={alt/1000:.1f}km, v={speed:.0f}m/s, γ={fpa:.1f}°")
+                    print(f"     Predicted apogee: {apogee_alt/1000:.1f} km")
+                    print(f"     Predicted perigee: {perigee_alt/1000:.1f} km")
+                    s2_burn_phase = 2
+                    thrust_mag, mdot = 0.0, 0.0
+                    
+            elif s2_burn_phase == 2:
+                # PHASE 2: Coast to apogee
+                thrust_mag, mdot = 0.0, 0.0
+                
+                # Detect apogee: flight path angle crosses zero going negative
+                if prev_fpa > 0.5 and fpa <= 0.5 and alt > TARGET_ORBIT_ALT * 0.8:
+                    apogee_reached = True
+                    
+                if prev_fpa > -0.5 and fpa <= -0.5 and alt > TARGET_ORBIT_ALT * 0.5:
+                    # We've passed apogee - start circularization
+                    s2_burn_phase = 3
+                    v_deficit = v_circular_here - v_horizontal
+                    print(f"   At apogee T+{t:.1f}s:")
+                    print(f"     alt={alt/1000:.1f}km, v_h={v_horizontal:.0f}m/s")
+                    print(f"     V_circular at this alt: {v_circular_here:.0f} m/s")
+                    print(f"     Delta-V needed: {v_deficit:.0f} m/s")
+                    print(f"   Starting circularization burn...")
+                    circularization_burn_time = t
+                    
+            elif s2_burn_phase == 3:
+                # PHASE 3: Circularization burn
+                # Burn prograde until v_horizontal = v_circular at current altitude
+                
+                if v_horizontal < v_circular_here * 0.998 and s2_remaining > 0:
+                    # Still need more velocity
+                    thrust_mag, mdot = s2_throttle.at(1.0, alt)
+                    s2_remaining -= mdot * dt
+                else:
+                    # Circularization complete!
+                    thrust_mag, mdot = 0.0, 0.0
+                    if not circularization_complete:
+                        circularization_complete = True
+                        print(f"   Circularization complete T+{t:.1f}s:")
+                        print(f"     alt={alt/1000:.1f}km, v_h={v_horizontal:.0f}m/s")
+                        print(f"     V_circular: {v_circular_here:.0f} m/s")
+                        print(f"     Remaining propellant: {s2_remaining:.0f} kg")
+                        print(f"     Eccentricity: {eccentricity:.4f}")
+            else:
+                thrust_mag, mdot = 0.0, 0.0
         else:
             thrust_mag, mdot = 0.0, 0.0
+        
+        # Update previous flight path angle for apogee detection
+        prev_fpa = fpa
 
         if thrust_mag > 0:
             thrust_body = gimbal.thrust_vector(thrust_mag, gimbal_pitch, gimbal_yaw)
@@ -478,6 +630,34 @@ def run_orbital_simulation():
         accel = np.linalg.norm(state_dot.velocity_dot) / 9.81  # in G's
         accelerations.append(accel)
         stages.append(stage)
+
+        # Propagate stage 1 ballistically if it exists
+        if s1_state is not None:
+            # Simple ballistic propagation for stage 1
+            s1_dynamics = RigidBodyDynamics(
+                inertia=np.diag([1000.0, 1000.0, 500.0]),  # Simple tumbling stage
+                config=config
+            )
+            s1_state_dot = s1_dynamics.derivatives(
+                state=s1_state,
+                thrust_body=np.zeros(3),
+                moment_body=np.zeros(3),
+                mass_rate=0.0,
+                aero_force_body=np.zeros(3),  # Simplified - no detailed aero
+            )
+            s1_state = rk4_step(s1_state, dt, lambda s, sd=s1_state_dot: sd)
+            
+            # Record stage 1 data
+            s1_lat, s1_lon, s1_alt = eci_to_lla(s1_state.position)
+            s1_times.append(s1_state.time)
+            s1_positions.append(s1_state.position.copy())
+            s1_velocities.append(s1_state.velocity.copy())
+            s1_altitudes.append(s1_alt)
+            
+            # Stop tracking if stage 1 impacts
+            if s1_alt < -1000:
+                print(f"   Stage 1 IMPACT at T+{s1_state.time:.1f}s")
+                s1_state = None  # Stop propagating
 
         step += 1
         # Print progress - more frequent during powered flight, less during coast
@@ -555,12 +735,18 @@ def run_orbital_simulation():
         'stages': np.array(stages),
         'staging_time': staging_time,
         'seco_time': seco_time,
+        'circularization_burn_time': circularization_burn_time,
         'orbit_complete': orbit_complete,
         's1_dry': s1_dry,
         's2_dry': s2_dry,
         's1_prop': s1_prop,
         's2_prop': s2_prop,
         'payload': payload,
+        # Stage 1 trajectory
+        's1_times': np.array(s1_times) if len(s1_times) > 0 else np.array([]),
+        's1_positions': np.array(s1_positions) if len(s1_positions) > 0 else np.array([]),
+        's1_velocities': np.array(s1_velocities) if len(s1_velocities) > 0 else np.array([]),
+        's1_altitudes': np.array(s1_altitudes) if len(s1_altitudes) > 0 else np.array([]),
     }
 
     max_alt = np.max(data['altitudes']) / 1000
@@ -635,15 +821,59 @@ def create_visualization(data):
     # 3D trajectory in ECI
     # Scale positions for visualization
     pos_km = positions / 1000
+    
+    # Compute speeds for hover
+    speeds_array = np.linalg.norm(data['velocities'], axis=1)
+    
+    # Create custom hover text with orbital parameters
+    hover_text = []
+    for i in range(len(times)):
+        text = (
+            f"<b>T+{times[i]:.1f}s</b><br>"
+            f"Altitude: {altitudes[i]:.1f} km<br>"
+            f"Speed: {speeds_array[i]:.0f} m/s<br>"
+            f"V_horiz: {v_horizontals[i]:.0f} m/s<br>"
+            f"V_vert: {v_verticals[i]:.0f} m/s<br>"
+            f"Flight path: {flight_path_angles[i]:.1f}°<br>"
+            f"Mass: {masses[i]/1000:.1f} tons"
+        )
+        hover_text.append(text)
 
     fig.add_trace(go.Scatter3d(
         x=pos_km[:, 0], y=pos_km[:, 1], z=pos_km[:, 2],
         mode='lines',
         line=dict(color=v_horizontals, colorscale='Plasma', width=6,
                   colorbar=dict(title="V_horiz<br>(m/s)", x=0.45, len=0.4, y=0.8)),
-        name="Trajectory",
-        hovertemplate="X: %{x:.0f} km<br>Y: %{y:.0f} km<br>Z: %{z:.0f} km<extra></extra>",
+        name="Upper Stage",
+        text=hover_text,
+        hovertemplate="%{text}<extra></extra>",
     ), row=1, col=1)
+    
+    # Add Stage 1 ballistic trajectory if it exists
+    s1_positions_data = data.get('s1_positions', np.array([]))
+    if len(s1_positions_data) > 0:
+        s1_pos_km = s1_positions_data / 1000
+        s1_times_data = data.get('s1_times', np.array([]))
+        s1_alts = data.get('s1_altitudes', np.array([])) / 1000
+        s1_speeds = np.linalg.norm(data.get('s1_velocities', np.array([[0,0,0]])), axis=1)
+        
+        s1_hover = []
+        for i in range(len(s1_times_data)):
+            text = (
+                f"<b>STAGE 1 - T+{s1_times_data[i]:.1f}s</b><br>"
+                f"Altitude: {s1_alts[i]:.1f} km<br>"
+                f"Speed: {s1_speeds[i]:.0f} m/s"
+            )
+            s1_hover.append(text)
+        
+        fig.add_trace(go.Scatter3d(
+            x=s1_pos_km[:, 0], y=s1_pos_km[:, 1], z=s1_pos_km[:, 2],
+            mode='lines',
+            line=dict(color='yellow', width=4, dash='dash'),
+            name="Stage 1 (ballistic)",
+            text=s1_hover,
+            hovertemplate="%{text}<extra></extra>",
+        ), row=1, col=1)
 
     # Earth sphere
     u = np.linspace(0, 2 * np.pi, 50)
@@ -666,12 +896,28 @@ def create_visualization(data):
         x=[pos_km[0, 0]], y=[pos_km[0, 1]], z=[pos_km[0, 2]],
         mode='markers', marker=dict(size=8, color='lime'),
         name="Launch",
+        hovertemplate=(
+            "<b>LAUNCH</b><br>"
+            f"Alt: {altitudes[0]:.1f} km<br>"
+            f"Speed: {speeds_array[0]:.0f} m/s<br>"
+            f"Mass: {masses[0]/1000:.1f} tons<br>"
+            "<extra></extra>"
+        ),
     ), row=1, col=1)
 
     fig.add_trace(go.Scatter3d(
         x=[pos_km[-1, 0]], y=[pos_km[-1, 1]], z=[pos_km[-1, 2]],
         mode='markers', marker=dict(size=8, color='red'),
-        name=f"SECO ({v_horizontals[-1]:.0f} m/s)",
+        name=f"End",
+        hovertemplate=(
+            f"<b>T+{times[-1]:.1f}s</b><br>"
+            f"Alt: {altitudes[-1]:.1f} km<br>"
+            f"Speed: {speeds_array[-1]:.0f} m/s<br>"
+            f"V_horiz: {v_horizontals[-1]:.0f} m/s<br>"
+            f"Flight path: {flight_path_angles[-1]:.1f}°<br>"
+            f"Mass: {masses[-1]/1000:.1f} tons<br>"
+            "<extra></extra>"
+        ),
     ), row=1, col=1)
 
     # Plot 1 (row 1, col 2): Altitude and velocities
