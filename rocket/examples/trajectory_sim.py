@@ -55,10 +55,13 @@ def main() -> None:
     print("\n2. Creating vehicle model...")
 
     # Dry mass properties (structure, engine, avionics)
+    # For a 6m tall, 0.4m diameter rocket:
+    # - Izz (roll) ≈ 1/2 * m * r² ≈ 4 kg·m²
+    # - Ixx, Iyy (pitch/yaw) ≈ 1/12 * m * L² ≈ 600 kg·m²
     dry_mass = MassProperties.from_principal(
         mass=200.0,  # kg
         cg=[0.0, 0.0, 2.0],  # Center of gravity [m]
-        Ixx=100.0, Iyy=100.0, Izz=20.0,  # Moments of inertia [kg*m^2]
+        Ixx=600.0, Iyy=600.0, Izz=4.0,  # Moments of inertia [kg*m^2]
     )
 
     propellant_mass = 800.0  # kg
@@ -104,7 +107,7 @@ def main() -> None:
     sim = Simulator(
         vehicle=vehicle,
         guidance=guidance,
-        dt=0.05,  # 50ms time step (20 Hz)
+        dt=0.01,  # 10ms time step (100 Hz) for numerical stability
     )
 
     result = sim.run(t_final=200.0)  # Max 200 seconds

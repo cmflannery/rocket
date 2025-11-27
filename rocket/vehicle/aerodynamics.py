@@ -223,6 +223,74 @@ class SimpleAero:
 
         return F_drag + F_lift
 
+    @beartype
+    def moments_body(
+        self,
+        velocity_body: NDArray[np.float64],
+        angular_velocity: NDArray[np.float64],
+        density: float,
+        speed_of_sound: float,
+        reference_length: float,
+    ) -> NDArray[np.float64]:
+        """Calculate aerodynamic moments in body frame.
+
+        Includes:
+        - Static stability (from fins/body) - restoring moment at angle of attack
+        - Pitch damping - opposes rotation rate
+
+        Args:
+            velocity_body: Velocity in body frame [m/s]
+            angular_velocity: Angular velocity in body frame [rad/s]
+            density: Air density [kg/m^3]
+            speed_of_sound: Speed of sound [m/s]
+            reference_length: Reference length for moment coefficients [m]
+
+        Returns:
+            Moment vector in body frame [Mx, My, Mz] [N*m]
+        """
+        v = np.linalg.norm(velocity_body)
+        if v < 1.0:
+            return np.array([0.0, 0.0, 0.0])
+
+        q = 0.5 * density * v**2
+
+        # Angle of attack from velocity components
+        vx, vy, vz = velocity_body
+        alpha = np.arctan2(-vz, vx)  # Pitch angle of attack
+        beta = np.arctan2(vy, vx)    # Sideslip angle
+
+        # Static stability coefficient (Cm_alpha)
+        # Negative = stable (nose-down moment when AoA positive)
+        # Moderate stability to allow gravity turn while preventing tumbling
+        Cm_alpha = -2.0  # Moderate static stability [1/rad]
+
+        # Pitch damping coefficient (Cm_q)
+        # Negative = damping (opposes rotation)
+        # Moderate damping to reduce oscillations
+        Cmq = -5.0  # Moderate pitch damping [1/rad]
+
+        # Non-dimensional pitch rate: q * L / V
+        p, qb, r = angular_velocity  # Body rates
+        q_hat = qb * reference_length / v if v > 1.0 else 0.0
+        r_hat = r * reference_length / v if v > 1.0 else 0.0
+
+        # Pitching moment (about Y axis)
+        Cm = Cm_alpha * alpha + Cmq * q_hat
+        My = q * self.reference_area * reference_length * Cm
+
+        # Yawing moment (about Z axis) - similar stability for sideslip
+        Cn_beta = -2.0  # Moderate yaw static stability
+        Cnr = -5.0  # Moderate yaw damping
+        Cn = Cn_beta * beta + Cnr * r_hat
+        Mz = q * self.reference_area * reference_length * Cn
+
+        # Roll damping (about X axis)
+        Clp = -5.0  # Roll damping
+        p_hat = p * reference_length / v if v > 1.0 else 0.0
+        Mx = q * self.reference_area * reference_length * Clp * p_hat
+
+        return np.array([Mx, My, Mz])
+
 
 # =============================================================================
 # Tabulated Aerodynamics

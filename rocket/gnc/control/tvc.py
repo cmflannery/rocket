@@ -50,11 +50,14 @@ class TVCController:
         max_gimbal: Maximum gimbal angle [rad]
         gimbal_rate_limit: Maximum gimbal rate [rad/s]
     """
-    pitch_gains: PIDGains = field(default_factory=lambda: PIDGains(kp=2.0, ki=0.1, kd=0.5))
-    yaw_gains: PIDGains = field(default_factory=lambda: PIDGains(kp=2.0, ki=0.1, kd=0.5))
-    roll_gains: PIDGains = field(default_factory=lambda: PIDGains(kp=1.0, ki=0.05, kd=0.2))
+    # Default gains tuned for typical rocket dynamics
+    # Conservative values prioritizing stability over responsiveness
+    # Low integral gain to prevent windup during gravity turns
+    pitch_gains: PIDGains = field(default_factory=lambda: PIDGains(kp=0.3, ki=0.0, kd=0.1))
+    yaw_gains: PIDGains = field(default_factory=lambda: PIDGains(kp=0.3, ki=0.0, kd=0.1))
+    roll_gains: PIDGains = field(default_factory=lambda: PIDGains(kp=0.3, ki=0.0, kd=0.1))
     max_gimbal: float = np.radians(6.0)  # ±6 degrees
-    gimbal_rate_limit: float = np.radians(20.0)  # 20 deg/s
+    gimbal_rate_limit: float = np.radians(10.0)  # 10 deg/s (conservative)
 
     # Internal controllers
     _pitch_ctrl: PIDController = field(init=False, repr=False)
@@ -97,6 +100,9 @@ class TVCController:
     ) -> tuple[float, float]:
         """Compute gimbal commands to track target attitude.
 
+        Uses primarily rate damping for stability during gravity turns.
+        Small proportional gain helps with initial kick maneuver.
+
         Args:
             state: Current vehicle state
             target_pitch: Target pitch angle [rad]
@@ -106,19 +112,47 @@ class TVCController:
         Returns:
             Tuple of (pitch_gimbal, yaw_gimbal) commands [rad]
         """
-        # Get current attitude
+        # Get current attitude and rates
         roll, pitch, yaw = state.euler_angles
+        p, q, r = state.angular_velocity  # Body rates
+
+        # Check for NaN in state (numerical instability protection)
+        if np.any(np.isnan([roll, pitch, yaw, p, q, r])):
+            return self._prev_gimbal
 
         # Compute errors
         pitch_error = target_pitch - pitch
         yaw_error = target_yaw - yaw
 
-        # Wrap yaw error to [-pi, pi]
+        # Wrap errors to [-pi, pi]
+        pitch_error = np.arctan2(np.sin(pitch_error), np.cos(pitch_error))
         yaw_error = np.arctan2(np.sin(yaw_error), np.cos(yaw_error))
 
-        # PID control
-        pitch_cmd = self._pitch_ctrl.update(pitch_error, dt)
-        yaw_cmd = self._yaw_ctrl.update(yaw_error, dt)
+        # For near-vertical flight (pitch > 60°), disable yaw control
+        # Yaw is undefined when vertical
+        if abs(pitch) > np.radians(60):
+            yaw_error = 0.0
+
+        # During gravity turn (pitch < 80°), use rate-damping only
+        # This prevents the controller from fighting the natural turn
+        if abs(pitch) < np.radians(80):
+            # Pure rate damping - just oppose angular velocity
+            rate_gain = 0.01  # Gentle damping
+            pitch_cmd = -rate_gain * q
+            yaw_cmd = -rate_gain * r
+        else:
+            # Near-vertical: small proportional control + rate damping
+            # Limit error to prevent aggressive corrections
+            max_error = np.radians(3.0)
+            pitch_error = np.clip(pitch_error, -max_error, max_error)
+            yaw_error = np.clip(yaw_error, -max_error, max_error)
+
+            # Small proportional gain with rate damping
+            kp = 0.1  # Small proportional gain
+            kd = 0.02  # Rate damping
+
+            pitch_cmd = kp * pitch_error - kd * q
+            yaw_cmd = kp * yaw_error - kd * r
 
         # Apply rate limiting
         pitch_cmd, yaw_cmd = self._rate_limit((pitch_cmd, yaw_cmd), dt)

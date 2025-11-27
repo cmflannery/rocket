@@ -1,0 +1,725 @@
+#!/usr/bin/env python
+"""Orbital launch trajectory simulation with spherical Earth.
+
+Uses proper Earth-Centered Inertial (ECI) coordinates where:
+- Position is relative to Earth's center
+- Gravity points radially inward (changes direction as rocket moves)
+- Orbital mechanics work naturally
+
+Target orbit: ~200 km LEO
+Orbital velocity at 200km: ~7,784 m/s
+"""
+
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from rocket import EngineInputs, design_engine
+from rocket.dynamics.rigid_body import DynamicsConfig, RigidBodyDynamics, rk4_step
+from rocket.dynamics.state import State
+from rocket.environment.atmosphere import Atmosphere
+from rocket.environment.gravity import R_EARTH_EQ, GravityModel, orbital_velocity
+from rocket.propulsion.throttle_model import GimbalModel, ThrottleModel
+from rocket.units import kilonewtons, megapascals
+from rocket.vehicle.aerodynamics import SimpleAero
+
+
+def eci_to_lla(position):
+    """Convert ECI position to latitude, longitude, altitude."""
+    x, y, z = position
+    r = np.linalg.norm(position)
+
+    lat = np.arcsin(z / r) if r > 0 else 0
+    lon = np.arctan2(y, x)
+    alt = r - R_EARTH_EQ
+
+    return np.degrees(lat), np.degrees(lon), alt
+
+
+def local_vertical_horizontal(position, velocity):
+    """Get local vertical and horizontal velocity components.
+
+    Returns:
+        v_vertical: velocity component radially outward (m/s)
+        v_horizontal: velocity component tangent to Earth (m/s)
+    """
+    r = np.linalg.norm(position)
+    r_hat = position / r if r > 0 else np.array([0, 0, 1])
+
+    v_radial = np.dot(velocity, r_hat)  # Positive = going up
+    v_tangent = np.linalg.norm(velocity - v_radial * r_hat)
+
+    return v_radial, v_tangent
+
+
+def flight_path_angle(position, velocity):
+    """Compute flight path angle (angle between velocity and local horizontal).
+
+    Returns angle in degrees. 90° = straight up, 0° = horizontal, -90° = straight down.
+    """
+    v_radial, v_tangent = local_vertical_horizontal(position, velocity)
+    speed = np.linalg.norm(velocity)
+
+    if speed < 1:
+        return 90.0
+
+    return np.degrees(np.arctan2(v_radial, v_tangent))
+
+
+def run_orbital_simulation():
+    """Run orbital launch simulation in ECI coordinates."""
+    print("=" * 70)
+    print("ORBITAL LAUNCH SIMULATION (Spherical Earth)")
+    print("=" * 70)
+
+    # =========================================================================
+    # Vehicle Configuration
+    # =========================================================================
+    print("\n1. Configuring Vehicle...")
+
+    # Stage 1 engine
+    s1_inputs = EngineInputs.from_propellants(
+        oxidizer="LOX", fuel="RP1",
+        thrust=kilonewtons(800),  # 800 kN
+        chamber_pressure=megapascals(8.0),
+        mixture_ratio=2.3,
+        name="Stage 1",
+    )
+    s1_perf, _ = design_engine(s1_inputs)
+
+    # Stage 2 engine
+    s2_inputs = EngineInputs.from_propellants(
+        oxidizer="LOX", fuel="RP1",
+        thrust=kilonewtons(80),  # 80 kN vacuum stage
+        chamber_pressure=megapascals(5.0),
+        mixture_ratio=2.3,
+        name="Stage 2",
+    )
+    s2_perf, _ = design_engine(s2_inputs)
+
+    # Mass budget (optimized for orbit)
+    s1_dry = 3000.0   # kg
+    s1_prop = 22000.0 # kg
+    s2_dry = 500.0    # kg
+    s2_prop = 4500.0  # kg
+    payload = 300.0   # kg
+
+    total_mass = s1_dry + s1_prop + s2_dry + s2_prop + payload
+    s2_total = s2_dry + s2_prop + payload
+
+    # Delta-V budget
+    ve1 = s1_perf.isp_vac.value * 9.81
+    ve2 = s2_perf.isp_vac.value * 9.81
+    dv1 = ve1 * np.log(total_mass / (total_mass - s1_prop))
+    dv2 = ve2 * np.log(s2_total / (s2_total - s2_prop))
+
+    print(f"   Stage 1: {s1_prop:.0f} kg, Isp={s1_perf.isp_vac.value:.0f}s, ΔV={dv1:.0f} m/s")
+    print(f"   Stage 2: {s2_prop:.0f} kg, Isp={s2_perf.isp_vac.value:.0f}s, ΔV={dv2:.0f} m/s")
+    print(f"   Total mass: {total_mass:.0f} kg, Total ΔV: {dv1+dv2:.0f} m/s")
+    print(f"   T/W at liftoff: {800000 / (total_mass * 9.81):.2f}")
+    print(f"   Target orbital velocity: {orbital_velocity(200e3):.0f} m/s")
+
+    # =========================================================================
+    # Initialize State in ECI coordinates
+    # =========================================================================
+    print("\n2. Initializing on launch pad (Cape Canaveral)...")
+
+    # Launch site parameters
+    lat_deg = 28.5   # Cape Canaveral
+    lon_deg = -80.6
+    heading_deg = 90.0  # Due East
+
+    lat = np.radians(lat_deg)
+    lon = np.radians(lon_deg)
+    heading = np.radians(heading_deg)
+
+    # Position on Earth's surface in ECI
+    r = R_EARTH_EQ
+    pos_x = r * np.cos(lat) * np.cos(lon)
+    pos_y = r * np.cos(lat) * np.sin(lon)
+    pos_z = r * np.sin(lat)
+    position = np.array([pos_x, pos_y, pos_z])
+
+    # Velocity from Earth's rotation
+    omega_earth = 7.2921159e-5  # rad/s
+    velocity = np.cross(np.array([0, 0, omega_earth]), position)
+
+    # Attitude: Body +X pointing radially outward (up)
+    # Body +Y pointing East, Body +Z pointing South
+    r_hat = position / np.linalg.norm(position)  # Up (radial)
+
+    # East direction (perpendicular to r_hat in equatorial plane)
+    z_eci = np.array([0, 0, 1])
+    east = np.cross(z_eci, r_hat)
+    east = east / np.linalg.norm(east)  # Normalize
+
+    # North direction
+    north = np.cross(r_hat, east)
+
+    # Create rotation matrix (body to inertial)
+    # Body X = up (r_hat), Body Y = heading direction, Body Z completes right-hand
+    heading_dir = np.cos(heading) * north + np.sin(heading) * east
+    body_x = r_hat  # Forward (up for launch)
+    body_y = heading_dir  # Right wing direction
+    body_z = np.cross(body_x, body_y)  # Down
+
+    # DCM from body to inertial (columns are body axes in inertial frame)
+    dcm_body_to_inertial = np.column_stack([body_x, body_y, body_z])
+
+    # Convert DCM to quaternion (inertial to body)
+    dcm_inertial_to_body = dcm_body_to_inertial.T
+    from rocket.dynamics.state import dcm_to_quaternion
+    quaternion = dcm_to_quaternion(dcm_inertial_to_body)
+
+    state = State(
+        position=position,
+        velocity=velocity,
+        quaternion=quaternion,
+        angular_velocity=np.array([0.0, 0.0, 0.0]),
+        mass=total_mass,
+        time=0.0,
+        flat_earth=False,  # ECI coordinates
+    )
+
+    # Vehicle parameters
+    vehicle_length = 30.0  # m
+    vehicle_diameter = 2.0 # m
+    ref_area = np.pi * (vehicle_diameter / 2) ** 2
+
+    Ixx = total_mass * vehicle_length**2 / 12
+    Iyy = Ixx
+    Izz = total_mass * (vehicle_diameter / 2)**2 / 2
+
+    # Use SPHERICAL gravity for proper orbital mechanics
+    config = DynamicsConfig(gravity_model=GravityModel.SPHERICAL)
+    dynamics = RigidBodyDynamics(inertia=np.diag([Ixx, Iyy, Izz]), config=config)
+    atmosphere = Atmosphere()
+
+    s1_throttle = ThrottleModel(engine=s1_perf, min_throttle=0.6)
+    s2_throttle = ThrottleModel(engine=s2_perf, min_throttle=0.4)
+    gimbal = GimbalModel(max_gimbal_angle=np.radians(5), gimbal_rate=np.radians(15))
+    aero = SimpleAero(Cd0=0.3, reference_area=ref_area)
+
+    lat, lon, alt = eci_to_lla(state.position)
+    print(f"   Initial position: {lat:.2f}°N, {lon:.2f}°E, alt={alt:.0f}m")
+    print(f"   Initial velocity: {state.speed:.0f} m/s (Earth rotation)")
+
+    # =========================================================================
+    # Run Simulation
+    # =========================================================================
+    print("\n3. Running simulation...")
+
+    dt = 0.01  # Smaller timestep for stability
+    t_max = 6000.0  # Enough time for one orbit (~90 min for LEO)
+
+    # Storage
+    times = [0.0]
+    positions = [state.position.copy()]
+    velocities = [state.velocity.copy()]
+    masses = [state.mass]
+    altitudes = [alt]
+    speeds = [state.speed]
+    v_verticals = [0.0]
+    v_horizontals = [state.speed]
+    flight_path_angles = [90.0]  # Start vertical
+
+    stage = 1
+    s1_remaining = s1_prop
+    s2_remaining = s2_prop
+    staging_time = None
+    seco_time = None
+
+    # Gravity turn parameters
+    pitch_kick_start = 10.0
+
+    # For orbit tracking
+    start_lon = lon_deg
+    crossed_start = False
+    orbit_complete = False
+
+    step = 0
+    while state.time < t_max:
+        t = state.time
+
+        # Current state in local coordinates
+        lat, lon, alt = eci_to_lla(state.position)
+        speed = state.speed
+        v_vertical, v_horizontal = local_vertical_horizontal(state.position, state.velocity)
+        fpa = flight_path_angle(state.position, state.velocity)
+
+        # Get body attitude relative to local vertical
+        r = np.linalg.norm(state.position)
+        r_hat = state.position / r  # Local vertical (up)
+
+        # Current pitch relative to local horizon
+        body_z = state.dcm_body_to_inertial[:, 2]  # Body Z axis in inertial
+
+        # =====================================================================
+        # Staging
+        # =====================================================================
+        if stage == 1 and s1_remaining <= 0:
+            print(f"   MECO T+{t:.1f}s: alt={alt/1000:.1f}km, v={speed:.0f}m/s, v_h={v_horizontal:.0f}m/s, γ={fpa:.1f}°")
+            staging_time = t
+            stage = 2
+
+            new_mass = s2_dry + s2_remaining + payload
+            state = State(
+                position=state.position.copy(),
+                velocity=state.velocity.copy(),
+                quaternion=state.quaternion.copy(),
+                angular_velocity=state.angular_velocity.copy(),
+                mass=new_mass,
+                time=state.time,
+                flat_earth=False,
+            )
+
+            # Update inertia
+            s2_length = 8.0
+            Ixx = new_mass * s2_length**2 / 12
+            dynamics = RigidBodyDynamics(
+                inertia=np.diag([Ixx, Ixx, new_mass * 0.6**2 / 2]),
+                config=config
+            )
+
+            # Coast phase
+            for _ in range(int(3.0 / dt)):
+                state_dot = dynamics.derivatives(
+                    state=state,
+                    thrust_body=np.zeros(3),
+                    moment_body=np.zeros(3),
+                    mass_rate=0.0,
+                )
+                state = rk4_step(state, dt, lambda s, sd=state_dot: sd)
+
+                lat_c, lon_c, alt_c = eci_to_lla(state.position)
+                v_v, v_h = local_vertical_horizontal(state.position, state.velocity)
+
+                times.append(state.time)
+                positions.append(state.position.copy())
+                velocities.append(state.velocity.copy())
+                masses.append(state.mass)
+                altitudes.append(alt_c)
+                speeds.append(state.speed)
+                v_verticals.append(v_v)
+                v_horizontals.append(v_h)
+                flight_path_angles.append(flight_path_angle(state.position, state.velocity))
+
+            print(f"   SES-2 T+{state.time:.1f}s")
+            continue
+
+        # =====================================================================
+        # Guidance - Gravity Turn (prograde pointing after pitch kick)
+        # =====================================================================
+        # Real rockets use gravity turn: after initial pitch kick, thrust along velocity
+
+        # Get East direction at current position
+        z_eci = np.array([0.0, 0.0, 1.0])
+        east = np.cross(z_eci, r_hat)
+        if np.linalg.norm(east) > 0.1:
+            east = east / np.linalg.norm(east)
+        else:
+            east = np.array([0.0, 1.0, 0.0])
+
+        # Programmed pitch profile (angle from vertical in degrees)
+        # More gradual turn to maintain altitude gain
+        if t < pitch_kick_start:
+            # Vertical ascent - clear the tower
+            pitch_from_vertical_deg = 0.0
+        elif t < 30:
+            # Initial pitch kick: 0 to 5 degrees over 20s
+            pitch_from_vertical_deg = 5.0 * (t - pitch_kick_start) / (30 - pitch_kick_start)
+        elif t < 60:
+            # Gradual pitchover: 5 to 25 degrees
+            pitch_from_vertical_deg = 5.0 + 20.0 * (t - 30) / 30
+        elif t < 100:
+            # Continue pitchover: 25 to 60 degrees  
+            pitch_from_vertical_deg = 25.0 + 35.0 * (t - 60) / 40
+        elif t < 150:
+            # Final pitchover: 60 to 85 degrees (near horizontal)
+            pitch_from_vertical_deg = 60.0 + 25.0 * (t - 100) / 50
+        else:
+            # Hold near-horizontal for orbital insertion
+            pitch_from_vertical_deg = 85.0
+        
+        pitch_rad = np.radians(pitch_from_vertical_deg)
+        target_direction = np.cos(pitch_rad) * r_hat + np.sin(pitch_rad) * east
+        target_direction = target_direction / np.linalg.norm(target_direction)
+
+        # =====================================================================
+        # Control - Point along target direction (no active feedback)
+        # =====================================================================
+        # For a gravity turn, we simply point along velocity after kick.
+        # Instead of using gimbal feedback control (which can oscillate),
+        # we'll directly set the attitude by updating quaternion to match target.
+        # This is a "perfect attitude control" simplification.
+
+        dcm = state.dcm_body_to_inertial
+        body_x = dcm[:, 0]  # Current thrust direction
+
+        # For stable simulation, apply zero gimbal - thrust along body axis
+        gimbal_pitch = 0.0
+        gimbal_yaw = 0.0
+
+        # Instead, we'll update the quaternion to align body_x with target_direction
+        # This simulates perfect attitude control without gimbal dynamics
+        # Compute rotation from current body_x to target_direction
+        axis = np.cross(body_x, target_direction)
+        axis_norm = np.linalg.norm(axis)
+
+        if axis_norm > 1e-6:
+            axis = axis / axis_norm
+            angle = np.arccos(np.clip(np.dot(body_x, target_direction), -1, 1))
+
+            # Apply only a fraction of the correction per timestep (rate limiting)
+            max_rate = np.radians(5.0)  # 5 deg/s max attitude rate
+            angle = np.clip(angle, -max_rate * dt, max_rate * dt)
+
+            # Small rotation quaternion
+            dq = np.array([
+                np.cos(angle / 2),
+                axis[0] * np.sin(angle / 2),
+                axis[1] * np.sin(angle / 2),
+                axis[2] * np.sin(angle / 2)
+            ])
+
+            # Apply rotation: q_new = dq * q
+            q = state.quaternion
+            new_q = np.array([
+                dq[0]*q[0] - dq[1]*q[1] - dq[2]*q[2] - dq[3]*q[3],
+                dq[0]*q[1] + dq[1]*q[0] + dq[2]*q[3] - dq[3]*q[2],
+                dq[0]*q[2] - dq[1]*q[3] + dq[2]*q[0] + dq[3]*q[1],
+                dq[0]*q[3] + dq[1]*q[2] - dq[2]*q[1] + dq[3]*q[0]
+            ])
+
+            # Normalize and update
+            new_q = new_q / np.linalg.norm(new_q)
+            state = State(
+                position=state.position,
+                velocity=state.velocity,
+                quaternion=new_q,
+                angular_velocity=np.zeros(3),  # Clear any angular velocity
+                mass=state.mass,
+                time=state.time,
+                flat_earth=False,
+            )
+
+        # =====================================================================
+        # Propulsion
+        # =====================================================================
+        if stage == 1 and s1_remaining > 0:
+            thrust_mag, mdot = s1_throttle.at(1.0, alt)
+            s1_remaining -= mdot * dt
+        elif stage == 2 and s2_remaining > 0:
+            thrust_mag, mdot = s2_throttle.at(1.0, alt)
+            s2_remaining -= mdot * dt
+        else:
+            thrust_mag, mdot = 0.0, 0.0
+
+        if thrust_mag > 0:
+            thrust_body = gimbal.thrust_vector(thrust_mag, gimbal_pitch, gimbal_yaw)
+            thrust_moment = gimbal.moment(thrust_mag, gimbal_pitch, gimbal_yaw)
+        else:
+            thrust_body = np.zeros(3)
+            thrust_moment = np.zeros(3)
+
+        # =====================================================================
+        # Aerodynamics (relative to rotating atmosphere)
+        # =====================================================================
+        aero_force = np.zeros(3)
+        aero_moment = np.zeros(3)
+        if alt < 100000:
+            atm = atmosphere.at_altitude(alt, speed)
+            if atm.density > 1e-9:
+                # Compute velocity relative to atmosphere (rotating with Earth)
+                omega_earth = np.array([0, 0, 7.2921159e-5])
+                v_atmosphere = np.cross(omega_earth, state.position)  # Atmosphere velocity in ECI
+                v_relative_inertial = state.velocity - v_atmosphere   # Relative to atmosphere
+                v_body = state.dcm_inertial_to_body @ v_relative_inertial  # Transform to body
+
+                v_rel_mag = np.linalg.norm(v_relative_inertial)
+                if v_rel_mag > 5:  # Only compute aero if moving relative to air
+                    aero_force = aero.forces_body(v_body, atm.density, atm.speed_of_sound)
+
+        # =====================================================================
+        # Integrate
+        # =====================================================================
+        total_moment = thrust_moment + aero_moment
+
+
+        state_dot = dynamics.derivatives(
+            state=state,
+            thrust_body=thrust_body,
+            moment_body=total_moment,
+            mass_rate=-mdot,
+            aero_force_body=aero_force,
+        )
+        state = rk4_step(state, dt, lambda s, sd=state_dot: sd)
+
+        # Record
+        lat, lon, alt = eci_to_lla(state.position)
+        v_vertical, v_horizontal = local_vertical_horizontal(state.position, state.velocity)
+
+        times.append(state.time)
+        positions.append(state.position.copy())
+        velocities.append(state.velocity.copy())
+        masses.append(state.mass)
+        altitudes.append(alt)
+        speeds.append(state.speed)
+        v_verticals.append(v_vertical)
+        v_horizontals.append(v_horizontal)
+        flight_path_angles.append(flight_path_angle(state.position, state.velocity))
+
+        step += 1
+        # Print progress - more frequent during powered flight, less during coast
+        print_interval = 400 if stage < 3 else 6000  # ~1 min during coast
+        if step % print_interval == 0:
+            if stage < 3:
+                # Check thrust alignment during powered flight
+                dcm = state.dcm_body_to_inertial
+                thrust_dir_eci = dcm @ (thrust_body / max(np.linalg.norm(thrust_body), 1))
+                vel_dir = state.velocity / max(speed, 1)
+                thrust_vel_dot = np.dot(thrust_dir_eci, vel_dir)
+                print(f"   T+{t:6.1f}s: alt={alt/1000:6.1f}km, v={speed:6.0f}m/s, "
+                      f"v_h={v_horizontal:5.0f}m/s, γ={fpa:5.1f}°, T·v={thrust_vel_dot:.2f}")
+            else:
+                # Coast phase - just show orbital parameters
+                print(f"   T+{t:6.1f}s: alt={alt/1000:6.1f}km, v={speed:6.0f}m/s, "
+                      f"v_h={v_horizontal:5.0f}m/s, γ={fpa:5.1f}°")
+
+        # Termination
+        if alt < -1000:
+            print(f"   IMPACT at T+{t:.1f}s")
+            break
+
+        # Mark SECO but continue propagating
+        if stage == 2 and s2_remaining <= 0 and s2_remaining > -mdot * dt * 2:
+            print(f"   SECO T+{t:.1f}s: alt={alt/1000:.1f}km, v={speed:.0f}m/s, v_h={v_horizontal:.0f}m/s, γ={fpa:.1f}°")
+            seco_time = t
+            stage = 3  # Coast phase
+            print("   Entering coast phase - propagating orbit...")
+
+        # Track orbit completion (crossed starting longitude while in space)
+        if stage == 3 and alt > 100000:  # Above 100 km
+            # Check if we've crossed the starting longitude
+            lon_diff = lon - start_lon
+            if lon_diff > 180:
+                lon_diff -= 360
+            elif lon_diff < -180:
+                lon_diff += 360
+
+            if abs(lon_diff) < 5 and crossed_start and not orbit_complete:
+                orbit_complete = True
+                orbit_time = t - seco_time if seco_time else t
+                print(f"   ORBIT COMPLETE at T+{t:.1f}s ({orbit_time/60:.1f} min period)")
+                print(f"   Perigee: {np.min(altitudes[-int(60/dt):])/1000:.1f} km, "
+                      f"Apogee: {np.max(altitudes[-int(60/dt):])/1000:.1f} km")
+                break
+            elif abs(lon_diff) > 30:
+                crossed_start = True
+
+        # Check for numerical issues
+        state_arr = state.to_array()
+        if np.any(np.isnan(state_arr)) or np.any(np.abs(state_arr) > 1e15):
+            print(f"   ERROR: Numerical instability at T+{t:.1f}s")
+            print(f"          omega={state.angular_velocity}, mass={state.mass}")
+            break
+
+    # =========================================================================
+    # Results
+    # =========================================================================
+    print("\n4. Results:")
+    print("-" * 50)
+
+    data = {
+        'times': np.array(times),
+        'positions': np.array(positions),
+        'velocities': np.array(velocities),
+        'masses': np.array(masses),
+        'altitudes': np.array(altitudes),
+        'speeds': np.array(speeds),
+        'v_verticals': np.array(v_verticals),
+        'v_horizontals': np.array(v_horizontals),
+        'flight_path_angles': np.array(flight_path_angles),
+        'staging_time': staging_time,
+        'seco_time': seco_time,
+        'orbit_complete': orbit_complete,
+    }
+
+    max_alt = np.max(data['altitudes']) / 1000
+    max_speed = np.max(data['speeds'])
+    final_alt = data['altitudes'][-1] / 1000
+    final_speed = data['speeds'][-1]
+    final_v_h = data['v_horizontals'][-1]
+    final_fpa = data['flight_path_angles'][-1]
+
+    print(f"   Max altitude: {max_alt:.1f} km")
+    print(f"   Max speed: {max_speed:.0f} m/s")
+    print(f"   Final altitude: {final_alt:.1f} km")
+    print(f"   Final total velocity: {final_speed:.0f} m/s")
+    print(f"   Final horizontal velocity: {final_v_h:.0f} m/s")
+    print(f"   Final flight path angle: {final_fpa:.1f}°")
+
+    v_orbital = orbital_velocity(final_alt * 1000)
+    print(f"   Required orbital velocity at {final_alt:.0f}km: {v_orbital:.0f} m/s")
+
+    if final_v_h > v_orbital * 0.98 and abs(final_fpa) < 3:
+        print("   STATUS: ✓ ORBIT ACHIEVED!")
+    elif final_v_h > v_orbital * 0.90:
+        print(f"   STATUS: Near-orbital ({100*final_v_h/v_orbital:.1f}% of orbital velocity)")
+    else:
+        print(f"   STATUS: Suborbital ({100*final_v_h/v_orbital:.1f}% of orbital velocity)")
+
+    return data
+
+
+def create_visualization(data):
+    """Create 3D visualization of orbital trajectory."""
+    times = data['times']
+    positions = data['positions']
+    altitudes = data['altitudes'] / 1000
+    v_horizontals = data['v_horizontals']
+    v_verticals = data['v_verticals']
+    flight_path_angles = data['flight_path_angles']
+
+    # Compute ground track (lat/lon)
+    lats, lons = [], []
+    for pos in positions:
+        r = np.linalg.norm(pos)
+        lats.append(np.degrees(np.arcsin(pos[2] / r)))
+        lons.append(np.degrees(np.arctan2(pos[1], pos[0])))
+    lats = np.array(lats)
+    lons = np.array(lons)
+
+    # Create figure
+    fig = make_subplots(
+        rows=2, cols=2,
+        specs=[
+            [{"type": "scene"}, {"type": "xy"}],
+            [{"type": "xy"}, {"type": "xy"}],
+        ],
+        subplot_titles=(
+            "3D Trajectory (ECI Frame)",
+            "Altitude & Velocities",
+            "Ground Track",
+            "Flight Path Angle"
+        ),
+        horizontal_spacing=0.08,
+        vertical_spacing=0.1,
+    )
+
+    # 3D trajectory in ECI
+    # Scale positions for visualization
+    pos_km = positions / 1000
+
+    fig.add_trace(go.Scatter3d(
+        x=pos_km[:, 0], y=pos_km[:, 1], z=pos_km[:, 2],
+        mode='lines',
+        line=dict(color=v_horizontals, colorscale='Plasma', width=6,
+                  colorbar=dict(title="V_horiz<br>(m/s)", x=0.45, len=0.4, y=0.8)),
+        name="Trajectory",
+        hovertemplate="X: %{x:.0f} km<br>Y: %{y:.0f} km<br>Z: %{z:.0f} km<extra></extra>",
+    ), row=1, col=1)
+
+    # Earth sphere
+    u = np.linspace(0, 2 * np.pi, 50)
+    v = np.linspace(0, np.pi, 30)
+    r_earth_km = R_EARTH_EQ / 1000
+    x_earth = r_earth_km * np.outer(np.cos(u), np.sin(v))
+    y_earth = r_earth_km * np.outer(np.sin(u), np.sin(v))
+    z_earth = r_earth_km * np.outer(np.ones(50), np.cos(v))
+
+    fig.add_trace(go.Surface(
+        x=x_earth, y=y_earth, z=z_earth,
+        colorscale=[[0, 'rgb(30,60,120)'], [1, 'rgb(30,80,140)']],
+        showscale=False,
+        opacity=0.7,
+        name="Earth",
+    ), row=1, col=1)
+
+    # Launch and final points
+    fig.add_trace(go.Scatter3d(
+        x=[pos_km[0, 0]], y=[pos_km[0, 1]], z=[pos_km[0, 2]],
+        mode='markers', marker=dict(size=8, color='lime'),
+        name="Launch",
+    ), row=1, col=1)
+
+    fig.add_trace(go.Scatter3d(
+        x=[pos_km[-1, 0]], y=[pos_km[-1, 1]], z=[pos_km[-1, 2]],
+        mode='markers', marker=dict(size=8, color='red'),
+        name=f"SECO ({v_horizontals[-1]:.0f} m/s)",
+    ), row=1, col=1)
+
+    # Altitude and velocities
+    fig.add_trace(go.Scatter(x=times, y=altitudes, name='Altitude (km)',
+                             line=dict(color='cyan')), row=1, col=2)
+    fig.add_trace(go.Scatter(x=times, y=v_horizontals, name='V_horizontal (m/s)',
+                             line=dict(color='orange')), row=1, col=2)
+    fig.add_trace(go.Scatter(x=times, y=v_verticals, name='V_vertical (m/s)',
+                             line=dict(color='lime', dash='dot')), row=1, col=2)
+
+    # Orbital velocity reference
+    v_orb = orbital_velocity(altitudes[-1] * 1000)
+    fig.add_trace(go.Scatter(x=[times[0], times[-1]], y=[v_orb, v_orb],
+                             name=f'V_orbital ({v_orb:.0f} m/s)',
+                             line=dict(dash='dash', color='red')), row=1, col=2)
+
+    # Ground track
+    fig.add_trace(go.Scatter(x=lons, y=lats, mode='lines',
+                             line=dict(color='orange', width=3),
+                             name='Ground Track'), row=2, col=1)
+    fig.add_trace(go.Scatter(x=[lons[0]], y=[lats[0]], mode='markers',
+                             marker=dict(size=10, color='lime'),
+                             name='Launch Site'), row=2, col=1)
+
+    # Flight path angle
+    fig.add_trace(go.Scatter(x=times, y=flight_path_angles, name='Flight Path γ',
+                             line=dict(color='magenta')), row=2, col=2)
+    fig.add_trace(go.Scatter(x=[times[0], times[-1]], y=[0, 0],
+                             name='Horizontal', line=dict(dash='dash', color='gray')), row=2, col=2)
+
+    # Update layout
+    fig.update_scenes(
+        xaxis_title="X (km)",
+        yaxis_title="Y (km)",
+        zaxis_title="Z (km)",
+        aspectmode='data',
+        camera=dict(eye=dict(x=1.5, y=1.5, z=0.5)),
+    )
+
+    fig.update_xaxes(title_text="Time (s)", row=1, col=2)
+    fig.update_yaxes(title_text="Value", row=1, col=2)
+    fig.update_xaxes(title_text="Longitude (°)", row=2, col=1)
+    fig.update_yaxes(title_text="Latitude (°)", row=2, col=1)
+    fig.update_xaxes(title_text="Time (s)", row=2, col=2)
+    fig.update_yaxes(title_text="Angle (°)", row=2, col=2)
+
+    fig.update_layout(
+        title=dict(text="🚀 Orbital Launch (Spherical Earth ECI)", font=dict(size=24), x=0.5),
+        height=1000,
+        showlegend=True,
+        template='plotly_dark',
+    )
+
+    return fig
+
+
+def main():
+    data = run_orbital_simulation()
+
+    print("\n5. Creating visualization...")
+    fig = create_visualization(data)
+
+    output_path = "outputs/orbital_launch.html"
+    fig.write_html(output_path)
+    print(f"   Saved to: {output_path}")
+
+    print("\n   Opening in browser...")
+    fig.show()
+
+    print("\n" + "=" * 70)
+    print("SIMULATION COMPLETE")
+    print("=" * 70)
+
+
+if __name__ == "__main__":
+    main()

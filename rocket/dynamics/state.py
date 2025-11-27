@@ -275,14 +275,37 @@ class State:
         velocity = np.cross(np.array([0, 0, omega_earth]), position)
 
         # Attitude: vehicle pointing "up" (radially outward)
-        # with body X axis pointing in heading direction
-        # Start with identity (body = inertial)
-        # Rotate to align with local vertical
-        pitch = lat  # Pitch up by latitude
-        yaw = lon + np.pi/2  # Yaw to align with local frame
-        roll = heading - np.pi/2  # Roll for heading
+        # Body X = radial (up), Body Y = heading direction, Body Z completes frame
 
-        quaternion = euler_to_quaternion(roll, pitch, yaw)
+        # Local up direction (radial)
+        r_hat = position / np.linalg.norm(position)
+
+        # East direction (perpendicular to up, in equatorial plane)
+        z_eci = np.array([0.0, 0.0, 1.0])  # ECI Z axis (north pole)
+        east = np.cross(z_eci, r_hat)
+        east_norm = np.linalg.norm(east)
+        east = east / east_norm if east_norm > 1e-10 else np.array([1.0, 0.0, 0.0])
+
+        # North direction (perpendicular to up and east)
+        north = np.cross(r_hat, east)
+
+        # Heading direction (0 = north, 90 = east)
+        heading_dir = np.cos(heading) * north + np.sin(heading) * east
+
+        # Body frame axes:
+        # Body X = up (radial) - rocket points up
+        # Body Y = heading direction (right wing points in heading)
+        # Body Z = completes right-hand system (down relative to rocket)
+        body_x = r_hat
+        body_y = heading_dir
+        body_z = np.cross(body_x, body_y)
+
+        # DCM from body to inertial (columns are body axes in inertial frame)
+        dcm_body_to_inertial = np.column_stack([body_x, body_y, body_z])
+
+        # Convert to quaternion (we need inertial-to-body DCM for the State)
+        dcm_inertial_to_body = dcm_body_to_inertial.T
+        quaternion = dcm_to_quaternion(dcm_inertial_to_body)
 
         # No initial rotation
         angular_velocity = np.array([0.0, 0.0, 0.0])

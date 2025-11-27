@@ -134,6 +134,10 @@ class GravityTurnGuidance:
     def pitch_command(self, state: State) -> float:
         """Get commanded pitch angle.
 
+        For a gravity turn, the commanded pitch follows the flight path angle
+        (velocity vector direction). This maintains zero angle of attack,
+        letting gravity naturally pitch the vehicle over.
+
         Args:
             state: Current vehicle state
 
@@ -146,31 +150,40 @@ class GravityTurnGuidance:
         # Velocity-following mode
         t = state.time
 
-        # Phase 1: Vertical rise
+        # Phase 1: Vertical rise - maintain 90° pitch
         if t < self.pitch_kick_time:
-            return np.pi / 2  # Vertical
+            return np.pi / 2
 
-        # Phase 2: Pitch kick
-        if t < self.pitch_kick_time + self.pitch_kick_duration:
-            # Linear ramp from vertical to (vertical - kick)
-            frac = (t - self.pitch_kick_time) / self.pitch_kick_duration
-            return np.pi / 2 - self.pitch_kick * frac
-
-        # Phase 3: Follow velocity vector (gravity turn)
+        # Get current flight path angle from velocity
         v = state.velocity
         v_horiz = np.sqrt(v[0]**2 + v[1]**2)
-        v_vert = v[2]  # Positive up in ECI
+        v_vert = v[2]  # Positive up in flat-earth frame
+        speed = np.sqrt(v_horiz**2 + v_vert**2)
 
-        # Pitch from horizontal
+        # If velocity is too small, maintain vertical
+        if speed < 1.0:
+            return np.pi / 2
+
+        # Flight path angle (angle of velocity vector from horizontal)
         flight_path_angle = np.arctan2(v_vert, v_horiz)
 
-        return flight_path_angle
+        # Phase 2: Pitch kick - command pitch slightly below FPA to initiate turn
+        if t < self.pitch_kick_time + self.pitch_kick_duration:
+            frac = (t - self.pitch_kick_time) / self.pitch_kick_duration
+            # Offset from FPA by kick angle (times completion fraction)
+            pitch_cmd = flight_path_angle - self.pitch_kick * frac
+            return float(np.clip(pitch_cmd, 0.0, np.pi / 2))
+
+        # Phase 3: True gravity turn - follow velocity vector exactly
+        # This is the "zero-lift" gravity turn where we maintain zero AoA
+        return float(np.clip(flight_path_angle, 0.0, np.pi / 2))
 
     @beartype
     def yaw_command(self, state: State) -> float:
         """Get commanded yaw angle.
 
         For a gravity turn, yaw follows the velocity heading.
+        During near-vertical flight, returns 0 (yaw is undefined when vertical).
 
         Args:
             state: Current vehicle state
@@ -178,8 +191,15 @@ class GravityTurnGuidance:
         Returns:
             Commanded yaw angle [rad]
         """
-        # Follow velocity heading
         v = state.velocity
+        v_horiz = np.sqrt(v[0]**2 + v[1]**2)
+
+        # During near-vertical flight, yaw is undefined/meaningless
+        # Return 0 to avoid control fighting
+        if v_horiz < 10.0:  # Less than 10 m/s horizontal
+            return 0.0
+
+        # Follow velocity heading once horizontal velocity is significant
         return np.arctan2(v[1], v[0])
 
     @beartype

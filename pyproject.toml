@@ -29,6 +29,7 @@ dependencies = [
     "rocketcea>=1.2.1",
     "polars>=1.35.0",
     "tqdm>=4.66",
+    "plotly>=6.5.0",
 ]
 
 [project.optional-dependencies]

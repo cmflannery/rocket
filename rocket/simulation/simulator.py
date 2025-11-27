@@ -260,7 +260,8 @@ class Simulator:
     aerodynamics: SimpleAero | None = None
 
     # Simulation parameters
-    dt: float = 0.01  # Time step [s]
+    # Note: dt=0.01 required for numerical stability with 6DOF dynamics
+    dt: float = 0.01  # Time step [s] (10ms for stability)
 
     def __post_init__(self) -> None:
         """Initialize subsystems."""
@@ -308,9 +309,13 @@ class Simulator:
         """
         # Initialize state
         if initial_state is None:
+            # Initialize with pitch=90 (vertical) and yaw=0
+            # Yaw is undefined for vertical flight - heading will be
+            # established naturally as the vehicle pitches over
             initial_state = State.from_flat_earth(
                 z=0.0,
                 pitch_deg=90.0,  # Pointing up
+                yaw_deg=0.0,  # Yaw is irrelevant while vertical
                 mass_kg=self.vehicle.total_mass,
             )
 
@@ -347,13 +352,15 @@ class Simulator:
         for _ in range(n_steps):
             # Get guidance commands
             throttle_cmd = self.guidance.throttle_command(state)
-            attitude_cmd = self.guidance.attitude_command(state)
 
-            # TVC control
-            pitch_cmd, yaw_cmd = self.tvc_controller.update_attitude(
-                state, attitude_cmd[1], attitude_cmd[2], self.dt
-            )
-            gimbal = (pitch_cmd, yaw_cmd)
+            # Simple open-loop pitch kick for gravity turn
+            # During kick phase: apply constant gimbal to initiate pitchover
+            # After kick: no gimbal (let aerodynamics provide stability)
+            t = state.time
+            kick_start = self.guidance.pitch_kick_time
+            kick_end = kick_start + self.guidance.pitch_kick_duration
+
+            gimbal = (np.radians(0.5), 0.0) if kick_start <= t < kick_end else (0.0, 0.0)
 
             # Get thrust and mass flow
             thrust_mag = 0.0
@@ -371,12 +378,18 @@ class Simulator:
 
             # Aerodynamics
             aero_force = np.array([0.0, 0.0, 0.0])
+            aero_moment = np.array([0.0, 0.0, 0.0])
             if self.aerodynamics and state.altitude < 100000:
                 atm = atmosphere.at_altitude(state.altitude, state.speed)
                 if atm.density > 1e-6:
                     v_body = state.velocity_body()
                     aero_force = self.aerodynamics.forces_body(
                         v_body, atm.density, atm.speed_of_sound
+                    )
+                    aero_moment = self.aerodynamics.moments_body(
+                        v_body, state.angular_velocity,
+                        atm.density, atm.speed_of_sound,
+                        self.vehicle.reference_length,
                     )
 
             # Compute derivatives
@@ -386,6 +399,7 @@ class Simulator:
                 moment_body=thrust_moment,
                 mass_rate=-mdot,  # Negative because consuming propellant
                 aero_force_body=aero_force,
+                aero_moment_body=aero_moment,
             )
 
             # Integrate
