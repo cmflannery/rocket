@@ -561,8 +561,47 @@ def run_two_stage_mission():
 
 if __name__ == "__main__":
     from rocket.orbital_plotting import plot_two_stage_dashboard, plot_rtls_ground_track
+    from rocket.export import export_trajectory_to_json
 
     raw_data = run_two_stage_mission()
+
+    print("\n" + "=" * 70)
+    print("EXPORTING FLIGHT DATA")
+    print("=" * 70)
+    
+    # Combine data for export
+    s1_all_times = np.concatenate(
+        [raw_data["s1_ascent_times"], raw_data["s1_landing_times"]]
+    )
+    s1_all_positions = np.concatenate(
+        [raw_data["s1_ascent_positions"], raw_data["s1_landing_positions"]]
+    )
+    s1_all_velocities = np.concatenate(
+        [raw_data["s1_ascent_velocities"], raw_data["s1_landing_velocities"]]
+    )
+    s1_all_altitudes = np.concatenate(
+        [raw_data["s1_ascent_altitudes"], raw_data["s1_landing_altitudes"]]
+    )
+    s1_all_phases = np.concatenate(
+        [raw_data["s1_ascent_phases"], raw_data["s1_landing_phases"]]
+    )
+    
+    # Structure for JSON export
+    export_data = {
+        "times": raw_data["s2_times"],
+        "positions": raw_data["s2_positions"],
+        "velocities": raw_data["s2_velocities"],
+        "s2_phases": raw_data["s2_phases"],
+        "s1_times": s1_all_times,
+        "s1_positions": s1_all_positions,
+        "s1_velocities": s1_all_velocities,
+        "s1_phases": s1_all_phases,
+        "target_altitude": raw_data["target_altitude"],
+        "landing_site_eci": raw_data["landing_site_eci"],
+        "staging_time": raw_data["staging_time"]
+    }
+    
+    export_trajectory_to_json(export_data, "web/public/flight_data.json")
 
     print("\n" + "=" * 70)
     print("GENERATING TWO-STAGE DASHBOARD")

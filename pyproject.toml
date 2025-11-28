@@ -30,6 +30,7 @@ dependencies = [
     "polars>=1.35.0",
     "tqdm>=4.66",
     "plotly>=6.5.0",
+    "cvxpy>=1.7.4",
 ]
 
 [project.optional-dependencies]

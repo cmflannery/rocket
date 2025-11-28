@@ -52,6 +52,8 @@ class LandingCommand(NamedTuple):
     target_position: NDArray[np.float64] | None = None
 
 
+from flight.guidance.powered_descent import PoweredDescentGuidance
+
 @dataclass
 class FirstStageLandingGuidance:
     """First stage RTLS landing guidance.
@@ -84,6 +86,16 @@ class FirstStageLandingGuidance:
     _separation_time: float = field(default=0.0)
     _boostback_complete: bool = field(default=False)
     _entry_burn_complete: bool = field(default=False)
+    _powered_descent: PoweredDescentGuidance = field(init=False)
+    _landing_start_time: float = field(default=0.0)
+
+    def __post_init__(self):
+        self._powered_descent = PoweredDescentGuidance(
+            target_position=self.landing_site_eci,
+            max_thrust=self.max_thrust,
+            min_throttle=self.min_throttle,
+            dry_mass=self.dry_mass
+        )
 
     def initialize(self, state: State, separation_time: float):
         """Initialize guidance at stage separation.
@@ -164,9 +176,12 @@ class FirstStageLandingGuidance:
             # Start landing burn at specified altitude
             if alt < self.landing_burn_start_alt:
                 self._phase = FirstStageLandingPhase.LANDING_BURN
+                self._landing_start_time = state.time
+                # Initialize convex solver with current state
+                self._powered_descent.solve(state)
 
         elif self._phase == FirstStageLandingPhase.LANDING_BURN:
-            if alt < 10.0 and speed < 2.0:  # Touchdown
+            if alt < 5.0 and speed < 5.0:  # Touchdown
                 self._phase = FirstStageLandingPhase.LANDED
 
     def _coast_command(self, state: State) -> LandingCommand:
@@ -301,70 +316,15 @@ class FirstStageLandingGuidance:
         )
 
     def _landing_burn_command(self, state: State, alt: float) -> LandingCommand:
-        """Landing burn - aggressive constant-deceleration landing."""
-        vel = state.velocity
-        speed = np.linalg.norm(vel)
-
-        # Vertical velocity component (positive = away from Earth)
-        r_hat = state.position / np.linalg.norm(state.position)
-        v_vertical = np.dot(vel, r_hat)
+        """Landing burn - use convex optimization guidance."""
+        time_since_start = state.time - self._landing_start_time
         
-        # Horizontal velocity
-        v_horiz = vel - v_vertical * r_hat
-        v_horiz_mag = np.linalg.norm(v_horiz)
-
-        # Surface gravity
-        g = 9.81
-
-        # For landing, we need to kill all velocity
-        # Use full thrust until we're nearly stopped
-        if speed > 10.0:
-            # High speed - full thrust retrograde
-            # Bias slightly towards killing horizontal velocity if we are low
-            if alt < 1000 and v_horiz_mag > 10:
-                 # Mix retrograde with extra horizontal killing
-                 target_dir = -vel - v_horiz * 1.0
-                 target_dir = target_dir / np.linalg.norm(target_dir)
-                 thrust = self.max_thrust
-            else:
-                 target_dir = -vel / speed
-                 thrust = self.max_thrust
-        elif alt > 50 and (abs(v_vertical) > 5.0 or speed > 20.0):
-            # Medium altitude, still moving - moderate thrust
-            # Required decel to stop at ground: a = v^2 / (2*h)
-            # Use total speed to ensure we kill horizontal velocity too
-            required_decel = (speed**2) / (2 * max(alt, 10)) * 1.5 + g
-            required_thrust = state.mass * required_decel
-            thrust = np.clip(required_thrust, self.max_thrust * self.min_throttle, self.max_thrust)
-            
-            # Direction: Retrograde
-            target_dir = -vel / speed
-            
-        elif alt > 10:
-            # Low altitude - controlled descent
-            # Target 5 m/s descent rate
-            target_descent = -5.0
-            error = v_vertical - target_descent
-            # Fix: Subtract error (negative error = too fast down => add thrust)
-            thrust = state.mass * (g - error * 2.0)  # PD controller
-            thrust = np.clip(thrust, self.max_thrust * self.min_throttle, self.max_thrust)
-            
-            # Kill horizontal velocity aggressively here
-            if v_horiz_mag > 1.0:
-                target_dir = -v_vertical*r_hat - v_horiz*2.0
-                target_dir = target_dir / np.linalg.norm(target_dir)
-            else:
-                target_dir = r_hat # Up
-                
-        else:
-            # Very low - hover thrust
-            thrust = state.mass * g
-            target_dir = r_hat
-
-        attitude = self._direction_to_quaternion(state, target_dir)
-
+        cmd = self._powered_descent.get_command(state, time_since_start)
+        
+        attitude = self._direction_to_quaternion(state, cmd["direction"])
+        
         return LandingCommand(
-            thrust=thrust,
+            thrust=cmd["thrust"],
             target_attitude=attitude,
             phase=self._phase.value,
             target_position=self.landing_site_eci,
