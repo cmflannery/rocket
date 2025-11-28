@@ -1,11 +1,12 @@
 """Gravity models for rocket vehicle simulation.
 
 Provides spherical and J2 (oblateness) gravity models for Earth.
+Core functions are numba-compiled for performance.
 
 Models available:
 - Spherical: Simple 1/r^2 gravity, adequate for most launch simulations
 - J2: Includes Earth's oblateness effect, important for orbital mechanics
-- Point mass: For flat-Earth approximations
+- Constant: Flat-Earth approximation
 
 Reference:
 - WGS84 ellipsoid parameters
@@ -27,6 +28,7 @@ from enum import Enum, auto
 
 import numpy as np
 from beartype import beartype
+from numba import njit
 from numpy.typing import NDArray
 
 # =============================================================================
@@ -34,14 +36,14 @@ from numpy.typing import NDArray
 # =============================================================================
 
 # WGS84 Earth parameters
-MU_EARTH = 3.986004418e14  # Gravitational parameter [m^3/s^2]
-R_EARTH_EQ = 6378137.0  # Equatorial radius [m]
-R_EARTH_POLAR = 6356752.314245  # Polar radius [m]
-J2 = 1.08262668e-3  # Second zonal harmonic (oblateness)
-OMEGA_EARTH = 7.2921159e-5  # Earth rotation rate [rad/s]
+MU_EARTH: float = 3.986004418e14  # Gravitational parameter [m^3/s^2]
+R_EARTH_EQ: float = 6378137.0  # Equatorial radius [m]
+R_EARTH_POLAR: float = 6356752.314245  # Polar radius [m]
+J2: float = 1.08262668e-3  # Second zonal harmonic (oblateness)
+OMEGA_EARTH: float = 7.2921159e-5  # Earth rotation rate [rad/s]
 
 # Standard gravity at sea level
-G0 = 9.80665  # [m/s^2]
+G0: float = 9.80665  # [m/s^2]
 
 
 # =============================================================================
@@ -55,6 +57,92 @@ class GravityModel(Enum):
     CONSTANT = auto()   # Constant g (flat Earth)
     SPHERICAL = auto()  # Point mass (1/r^2)
     J2 = auto()         # Spherical + J2 oblateness
+
+
+# =============================================================================
+# Numba-Optimized Core Functions
+# =============================================================================
+
+
+@njit(cache=True, fastmath=True)
+def _spherical_gravity(
+    x: float, y: float, z: float,
+    mu: float = MU_EARTH,
+) -> tuple[float, float, float]:
+    """Numba-optimized spherical gravity.
+
+    g = -mu/r^2 * r_hat
+    """
+    r_sq = x*x + y*y + z*z
+    r = np.sqrt(r_sq)
+
+    if r < 1e3:  # Avoid singularity near center
+        r = 1e3
+        r_sq = r * r
+
+    g_over_r = mu / (r_sq * r)
+
+    return (-g_over_r * x, -g_over_r * y, -g_over_r * z)
+
+
+@njit(cache=True, fastmath=True)
+def _j2_gravity(
+    x: float, y: float, z: float,
+    mu: float = MU_EARTH,
+    r_eq: float = R_EARTH_EQ,
+    j2: float = J2,
+) -> tuple[float, float, float]:
+    """Numba-optimized J2 gravity.
+
+    Includes Earth's oblateness perturbation.
+    """
+    r_sq = x*x + y*y + z*z
+    r = np.sqrt(r_sq)
+
+    if r < 1e3:
+        r = 1e3
+        r_sq = r * r
+
+    r3 = r * r_sq
+
+    # J2 perturbation factors
+    Re_r = r_eq / r
+    z_r = z / r
+    z_r_sq = z_r * z_r
+
+    factor = 1.5 * j2 * Re_r * Re_r
+
+    # Acceleration components
+    common = mu / r3
+
+    ax = -common * x * (1.0 - factor * (5.0 * z_r_sq - 1.0))
+    ay = -common * y * (1.0 - factor * (5.0 * z_r_sq - 1.0))
+    az = -common * z * (1.0 - factor * (5.0 * z_r_sq - 3.0))
+
+    return (ax, ay, az)
+
+
+@njit(cache=True, fastmath=True)
+def _constant_gravity(
+    x: float, y: float, z: float,
+    g0: float = G0,
+) -> tuple[float, float, float]:
+    """Constant gravity pointing toward Earth center."""
+    r_sq = x*x + y*y + z*z
+    r = np.sqrt(r_sq)
+
+    if r < 1.0:
+        return (0.0, 0.0, -g0)
+
+    inv_r = 1.0 / r
+    return (-g0 * x * inv_r, -g0 * y * inv_r, -g0 * z * inv_r)
+
+
+@njit(cache=True, fastmath=True)
+def gravity_magnitude_at_altitude(altitude: float, mu: float = MU_EARTH, r_eq: float = R_EARTH_EQ) -> float:
+    """Get gravity magnitude at altitude above surface."""
+    r = r_eq + altitude
+    return mu / (r * r)
 
 
 # =============================================================================
@@ -105,83 +193,18 @@ class Gravity:
         Returns:
             Acceleration vector in ECI frame [ax, ay, az] [m/s^2]
         """
-        position = np.asarray(position, dtype=np.float64)
+        x, y, z = float(position[0]), float(position[1]), float(position[2])
 
         if self.model == GravityModel.CONSTANT:
-            return self._constant_gravity(position)
+            gx, gy, gz = _constant_gravity(x, y, z, self.g0)
         elif self.model == GravityModel.SPHERICAL:
-            return self._spherical_gravity(position)
+            gx, gy, gz = _spherical_gravity(x, y, z)
         elif self.model == GravityModel.J2:
-            return self._j2_gravity(position)
+            gx, gy, gz = _j2_gravity(x, y, z)
         else:
             raise ValueError(f"Unknown gravity model: {self.model}")
 
-    def _constant_gravity(
-        self,
-        position: NDArray[np.float64],
-    ) -> NDArray[np.float64]:
-        """Constant gravity pointing toward Earth center.
-
-        Used for flat-Earth approximation with Z pointing up.
-        """
-        # Gravity points radially inward (toward Earth center)
-        r = np.linalg.norm(position)
-        if r < 1.0:
-            return np.array([0.0, 0.0, -self.g0])
-
-        r_hat = position / r
-        return -self.g0 * r_hat
-
-    def _spherical_gravity(
-        self,
-        position: NDArray[np.float64],
-    ) -> NDArray[np.float64]:
-        """Spherical (point mass) gravity model.
-
-        g = -mu/r^2 * r_hat
-        """
-        r = np.linalg.norm(position)
-        if r < 1e3:  # Avoid singularity near center
-            r = 1e3
-
-        r_hat = position / r
-        g_mag = MU_EARTH / (r ** 2)
-
-        return -g_mag * r_hat
-
-    def _j2_gravity(
-        self,
-        position: NDArray[np.float64],
-    ) -> NDArray[np.float64]:
-        """J2 gravity model including Earth's oblateness.
-
-        Includes the dominant J2 zonal harmonic which accounts for
-        Earth's equatorial bulge.
-        """
-        x, y, z = position
-        r = np.linalg.norm(position)
-
-        if r < 1e3:  # Avoid singularity
-            r = 1e3
-
-        # Point mass term
-        r ** 2
-        r3 = r ** 3
-
-        # J2 perturbation
-        Re_r = R_EARTH_EQ / r
-        z_r = z / r
-
-        factor = 1.5 * J2 * Re_r ** 2
-
-        # Acceleration components
-        common = MU_EARTH / r3
-
-        ax = -common * x * (1 - factor * (5 * z_r ** 2 - 1))
-        ay = -common * y * (1 - factor * (5 * z_r ** 2 - 1))
-        az = -common * z * (1 - factor * (5 * z_r ** 2 - 3))
-
-        return np.array([ax, ay, az])
+        return np.array([gx, gy, gz])
 
     @beartype
     def magnitude(self, position: NDArray[np.float64]) -> float:
@@ -241,8 +264,7 @@ def gravity_at_altitude(altitude: float) -> float:
     Returns:
         Gravity magnitude [m/s^2]
     """
-    r = R_EARTH_EQ + altitude
-    return MU_EARTH / (r ** 2)
+    return gravity_magnitude_at_altitude(altitude, MU_EARTH, R_EARTH_EQ)
 
 
 @beartype
@@ -285,4 +307,3 @@ def orbital_period(altitude: float) -> float:
     """
     r = R_EARTH_EQ + altitude
     return 2 * np.pi * np.sqrt(r ** 3 / MU_EARTH)
-
