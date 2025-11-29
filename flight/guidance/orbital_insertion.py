@@ -92,6 +92,41 @@ def _compute_apogee_from_state(
     return r_apogee - R_EARTH_EQ
 
 
+@njit(cache=True)
+def _compute_perigee_from_state(
+    rx: float, ry: float, rz: float,
+    vx: float, vy: float, vz: float,
+    mu: float = MU_EARTH,
+) -> float:
+    """Compute perigee altitude from current state."""
+    r = np.sqrt(rx*rx + ry*ry + rz*rz)
+    v = np.sqrt(vx*vx + vy*vy + vz*vz)
+
+    # Specific orbital energy
+    epsilon = v*v/2 - mu/r
+
+    if epsilon >= 0:
+        return np.inf  # Escape trajectory (no perigee in usual sense)
+
+    # Semi-major axis
+    a = -mu / (2 * epsilon)
+
+    # Angular momentum magnitude
+    hx = ry*vz - rz*vy
+    hy = rz*vx - rx*vz
+    hz = rx*vy - ry*vx
+    h = np.sqrt(hx*hx + hy*hy + hz*hz)
+
+    # Eccentricity
+    e = np.sqrt(1 + 2*epsilon*h*h/(mu*mu))
+    e = max(0.0, min(e, 0.9999))  # Clamp for numerical stability
+
+    # Perigee distance
+    r_perigee = a * (1 - e)
+
+    return r_perigee - R_EARTH_EQ
+
+
 @dataclass
 class OrbitalInsertionGuidance:
     """Second stage orbital insertion guidance.
@@ -169,7 +204,30 @@ class OrbitalInsertionGuidance:
     def _update_phase(self, state: State, alt: float, apogee: float):
         """Update guidance phase."""
         if self._phase == OrbitalInsertionPhase.GRAVITY_TURN:
-            # Check if apogee is high enough for circularization
+            # We want to reach a stable orbit where we can coast to apogee.
+            #
+            # The key insight: we can only coast to apogee if perigee is
+            # above the atmosphere. Otherwise we'll re-enter before reaching apogee.
+            #
+            # MECO conditions:
+            # 1. Apogee >= target altitude
+            # 2. Perigee > 150km (above atmosphere, can complete orbit)
+            # 3. Not about to escape
+
+            perigee = self._get_perigee(state)
+            speed = np.linalg.norm(state.velocity)
+            r = np.linalg.norm(state.position)
+            v_escape = np.sqrt(2 * MU_EARTH / r)
+
+            # Check if we're about to escape - emergency cutoff
+            if speed >= 0.95 * v_escape:
+                self._main_engine_cutoff = True
+                self._phase = OrbitalInsertionPhase.COAST_TO_APOGEE
+                return
+
+            # Normal MECO: apogee at target altitude
+            # We cut off when apogee reaches target, then coast to apogee and circularize
+            # Perigee will be raised during circularization burn
             if apogee >= self.target_altitude:
                 self._main_engine_cutoff = True
                 self._phase = OrbitalInsertionPhase.COAST_TO_APOGEE
@@ -242,12 +300,25 @@ class OrbitalInsertionGuidance:
 
             # Minimum flight path angle - don't pitch below this
             # Start with 5° above horizontal, relax as we gain altitude
+            # CRITICAL FIX: Never allow negative FPA (falling) until orbit insertion
             min_fpa = np.radians(5.0) if alt < 150e3 else np.radians(0.0)
+            
+            # If we are falling (v_radial < 0), strictly pitch up
+            if v_radial < -10.0:
+                min_fpa = np.radians(10.0)
 
-            if flight_path_angle < min_fpa and v_horiz_mag > 10.0:
-                # Velocity is too low - steer above velocity vector
-                # Target direction is horizontal (or slightly above)
-                h_hat = v_horizontal / v_horiz_mag  # Horizontal direction
+            if flight_path_angle < min_fpa:
+                # Velocity is too low/falling - steer above velocity vector
+                # Target direction is pitched up relative to horizon
+                # We compute horizontal vector
+                if v_horiz_mag > 1.0:
+                    h_hat = v_horizontal / v_horiz_mag
+                else:
+                    # If moving vertically, horizontal is arbitrary (use X)
+                    h_hat = np.array([1.0, 0.0, 0.0])
+                    h_hat = h_hat - np.dot(h_hat, r_hat) * r_hat
+                    h_hat = h_hat / np.linalg.norm(h_hat)
+                    
                 target_dir = h_hat * np.cos(min_fpa) + r_hat * np.sin(min_fpa)
             else:
                 # Velocity is acceptable - follow it (gravity turn)
@@ -314,6 +385,15 @@ class OrbitalInsertionGuidance:
         pos = state.position
         vel = state.velocity
         return _compute_apogee_from_state(
+            pos[0], pos[1], pos[2],
+            vel[0], vel[1], vel[2],
+        )
+
+    def _get_perigee(self, state: State) -> float:
+        """Get current perigee altitude."""
+        pos = state.position
+        vel = state.velocity
+        return _compute_perigee_from_state(
             pos[0], pos[1], pos[2],
             vel[0], vel[1], vel[2],
         )

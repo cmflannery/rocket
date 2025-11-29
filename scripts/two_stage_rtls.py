@@ -22,8 +22,12 @@ from flight.guidance import (
     OrbitalInsertionGuidance,
 )
 from rocket.dynamics.state import State
-from rocket.environment.gravity import GravityModel, MU_EARTH, R_EARTH_EQ
-from rocket.orbital import OMEGA_EARTH, compute_orbital_elements, eci_to_lla, launch_azimuth, lla_to_eci
+from rocket.environment.gravity import MU_EARTH, R_EARTH_EQ, GravityModel
+from rocket.orbital import (
+    OMEGA_EARTH,
+    compute_orbital_elements,
+    launch_azimuth,
+)
 from rocket.simulation import SimConfig, Simulator
 
 
@@ -166,6 +170,9 @@ def run_two_stage_mission():
     s1_ascent_velocities = []
     s1_ascent_altitudes = []
     s1_ascent_phases = []
+    s1_ascent_masses = []
+    s1_ascent_thrusts = []
+    s1_ascent_accelerations = []
 
     step = 0
     last_print_time = -10.0
@@ -204,6 +211,12 @@ def run_two_stage_mission():
             s1_ascent_velocities.append(v_ecef)
             s1_ascent_altitudes.append(env.altitude)
             s1_ascent_phases.append(1)  # Ascent phase
+            # Record S1 mass only (subtract S2 wet mass since we're carrying it)
+            s1_mass_only = state.mass - S2_WET_MASS
+            s1_ascent_masses.append(s1_mass_only)
+            s1_ascent_thrusts.append(cmd.thrust)
+            ascent_accel = cmd.thrust / state.mass if state.mass > 0 else 0.0
+            s1_ascent_accelerations.append(ascent_accel)
 
         # Progress output
         if sim.time - last_print_time >= 10.0:
@@ -269,18 +282,16 @@ def run_two_stage_mission():
     s2_sim = Simulator(state=s2_state, inertia=s2_inertia, config=config)
 
     # Initialize stage guidance
-    # Use 5 engines for boostback (high energy return), throttle down for landing
+    # Use 5 engines for boostback, single engine (throttleable) for landing
     S1_BOOSTBACK_THRUST = S1_LANDING_THRUST * 5  # 5 engines for boostback
+    S1_MIN_THRUST = S1_LANDING_THRUST * 0.4  # Single engine at 40% throttle
 
     s1_landing_guidance = FirstStageLandingGuidance(
-        landing_site_eci=landing_site_eci,
+        initial_landing_site_eci=landing_site_eci,
         max_thrust=S1_BOOSTBACK_THRUST,
-        min_throttle=0.33,  # Can throttle to 1 engine
+        min_thrust=S1_MIN_THRUST,
         dry_mass=S1_DRY_MASS,
-        boostback_dv=300.0,
-        entry_burn_start_alt=60000.0,  # Start entry burn lower (60 km)
-        entry_burn_target_speed=300.0,  # Target speed for entry burn
-        landing_burn_start_alt=15000.0,   # Start landing burn earlier (15 km)
+        isp=S1_ISP_VAC,  # Use vacuum Isp for high altitude
     )
     s1_landing_guidance.initialize(staging_state, staging_time)
 
@@ -296,12 +307,18 @@ def run_two_stage_mission():
     s1_landing_velocities = []
     s1_landing_altitudes = []
     s1_landing_phases = []
+    s1_landing_masses = []
+    s1_landing_thrusts = []
+    s1_landing_accelerations = []
 
     s2_orbit_times = []
     s2_orbit_positions = []
     s2_orbit_velocities = []
     s2_orbit_altitudes = []
     s2_orbit_phases = []
+    s2_orbit_masses = []
+    s2_orbit_thrusts = []
+    s2_orbit_accelerations = []
 
     # =========================================================================
     # Phase 2: Parallel simulation of both stages
@@ -312,7 +329,7 @@ def run_two_stage_mission():
     print("\n[Stage 1 → RTLS Landing] | [Stage 2 → Orbit Insertion]")
     print("-" * 70)
 
-    t_max = 900.0  # 15 minutes max
+    t_max = 6000.0  # 100 minutes max (full orbit)
     step = 0
     last_print_time = staging_time - 20.0
 
@@ -394,6 +411,10 @@ def run_two_stage_mission():
                 s1_landing_velocities.append(v_ecef)
                 s1_landing_altitudes.append(s1_env.altitude)
                 s1_landing_phases.append(s1_landing_guidance.phase.value)
+                s1_landing_masses.append(s1_state.mass)
+                s1_landing_thrusts.append(s1_thrust if s1_cmd.thrust > 0 else 0.0)
+                accel = s1_thrust / s1_state.mass if s1_state.mass > 0 else 0.0
+                s1_landing_accelerations.append(accel)
 
             # Check completion (soft landing)
             if s1_landing_guidance.is_complete(s1_state) and not s1_complete:
@@ -443,6 +464,11 @@ def run_two_stage_mission():
                 s2_orbit_velocities.append(v_ecef)
                 s2_orbit_altitudes.append(s2_env.altitude)
                 s2_orbit_phases.append(s2_orbit_guidance.phase.value + 10)  # Offset for unique ID
+                s2_orbit_masses.append(s2_state.mass)
+                s2_thrust_now = s2_cmd.thrust if s2_cmd.thrust > 0 and s2_state.mass > S2_DRY_MASS else 0.0
+                s2_orbit_thrusts.append(s2_thrust_now)
+                s2_accel = s2_thrust_now / s2_state.mass if s2_state.mass > 0 else 0.0
+                s2_orbit_accelerations.append(s2_accel)
 
             # Check completion
             if s2_orbit_guidance.is_complete(s2_state) or s2_sim.time > t_max:
@@ -538,29 +564,48 @@ def run_two_stage_mission():
         's1_ascent_velocities': np.array(s1_ascent_velocities),
         's1_ascent_altitudes': np.array(s1_ascent_altitudes),
         's1_ascent_phases': np.array(s1_ascent_phases),
+        's1_ascent_masses': np.array(s1_ascent_masses),
+        's1_ascent_thrusts': np.array(s1_ascent_thrusts),
+        's1_ascent_accelerations': np.array(s1_ascent_accelerations),
         # Stage 1 landing
         's1_landing_times': np.array(s1_landing_times),
         's1_landing_positions': np.array(s1_landing_positions),
         's1_landing_velocities': np.array(s1_landing_velocities),
         's1_landing_altitudes': np.array(s1_landing_altitudes),
         's1_landing_phases': np.array(s1_landing_phases),
+        's1_landing_masses': np.array(s1_landing_masses),
+        's1_landing_thrusts': np.array(s1_landing_thrusts),
+        's1_landing_accelerations': np.array(s1_landing_accelerations),
         # Stage 2
         's2_times': np.array(s2_orbit_times),
         's2_positions': np.array(s2_orbit_positions),
         's2_velocities': np.array(s2_orbit_velocities),
         's2_altitudes': np.array(s2_orbit_altitudes),
         's2_phases': np.array(s2_orbit_phases),
+        's2_masses': np.array(s2_orbit_masses),
+        's2_thrusts': np.array(s2_orbit_thrusts),
+        's2_accelerations': np.array(s2_orbit_accelerations),
         # Metadata
         'staging_time': staging_time,
         'target_altitude': TARGET_ALT,
         'landing_site_eci': landing_site_eci,
+        # Vehicle parameters
+        's1_dry_mass': S1_DRY_MASS,
+        's1_wet_mass': S1_WET_MASS,
+        's1_landing_propellant': S1_LANDING_PROPELLANT,
+        's2_dry_mass': S2_DRY_MASS,
+        's2_wet_mass': S2_WET_MASS,
+        's1_thrust': S1_THRUST,
+        's2_thrust': S2_THRUST,
+        's1_isp_sl': S1_ISP_SL,
+        's1_isp_vac': S1_ISP_VAC,
+        's2_isp': S2_ISP,
     }
 
     return trajectory_data
 
 
 if __name__ == "__main__":
-    from rocket.orbital_plotting import plot_two_stage_dashboard, plot_rtls_ground_track
     from rocket.export import export_trajectory_to_json
 
     raw_data = run_two_stage_mission()
@@ -568,7 +613,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("EXPORTING FLIGHT DATA")
     print("=" * 70)
-    
+
     # Combine data for export
     s1_all_times = np.concatenate(
         [raw_data["s1_ascent_times"], raw_data["s1_landing_times"]]
@@ -579,92 +624,51 @@ if __name__ == "__main__":
     s1_all_velocities = np.concatenate(
         [raw_data["s1_ascent_velocities"], raw_data["s1_landing_velocities"]]
     )
-    s1_all_altitudes = np.concatenate(
-        [raw_data["s1_ascent_altitudes"], raw_data["s1_landing_altitudes"]]
-    )
     s1_all_phases = np.concatenate(
         [raw_data["s1_ascent_phases"], raw_data["s1_landing_phases"]]
     )
-    
+    s1_all_masses = np.concatenate(
+        [raw_data["s1_ascent_masses"], raw_data["s1_landing_masses"]]
+    )
+    s1_all_thrusts = np.concatenate(
+        [raw_data["s1_ascent_thrusts"], raw_data["s1_landing_thrusts"]]
+    )
+    s1_all_accelerations = np.concatenate(
+        [raw_data["s1_ascent_accelerations"], raw_data["s1_landing_accelerations"]]
+    )
+
     # Structure for JSON export
     export_data = {
         "times": raw_data["s2_times"],
         "positions": raw_data["s2_positions"],
         "velocities": raw_data["s2_velocities"],
         "s2_phases": raw_data["s2_phases"],
+        "s2_masses": raw_data["s2_masses"],
+        "s2_thrusts": raw_data["s2_thrusts"],
+        "s2_accelerations": raw_data["s2_accelerations"],
         "s1_times": s1_all_times,
         "s1_positions": s1_all_positions,
         "s1_velocities": s1_all_velocities,
         "s1_phases": s1_all_phases,
+        "s1_masses": s1_all_masses,
+        "s1_thrusts": s1_all_thrusts,
+        "s1_accelerations": s1_all_accelerations,
         "target_altitude": raw_data["target_altitude"],
         "landing_site_eci": raw_data["landing_site_eci"],
-        "staging_time": raw_data["staging_time"]
+        "staging_time": raw_data["staging_time"],
+        # Vehicle parameters
+        "s1_dry_mass": raw_data["s1_dry_mass"],
+        "s1_wet_mass": raw_data["s1_wet_mass"],
+        "s1_landing_propellant": raw_data["s1_landing_propellant"],
+        "s2_dry_mass": raw_data["s2_dry_mass"],
+        "s2_wet_mass": raw_data["s2_wet_mass"],
+        "s1_thrust": raw_data["s1_thrust"],
+        "s2_thrust": raw_data["s2_thrust"],
+        "s1_isp_sl": raw_data["s1_isp_sl"],
+        "s1_isp_vac": raw_data["s1_isp_vac"],
+        "s2_isp": raw_data["s2_isp"],
     }
-    
+
     export_trajectory_to_json(export_data, "web/public/flight_data.json")
-
-    print("\n" + "=" * 70)
-    print("GENERATING TWO-STAGE DASHBOARD")
-    print("=" * 70)
-
-    # Combine stage 1 ascent + landing for booster trajectory
-    s1_all_times = np.concatenate(
-        [raw_data["s1_ascent_times"], raw_data["s1_landing_times"]]
-    )
-    s1_all_positions = np.concatenate(
-        [raw_data["s1_ascent_positions"], raw_data["s1_landing_positions"]]
-    )
-    s1_all_velocities = np.concatenate(
-        [raw_data["s1_ascent_velocities"], raw_data["s1_landing_velocities"]]
-    )
-    s1_all_altitudes = np.concatenate(
-        [raw_data["s1_ascent_altitudes"], raw_data["s1_landing_altitudes"]]
-    )
-    s1_all_phases = np.concatenate(
-        [raw_data["s1_ascent_phases"], raw_data["s1_landing_phases"]]
-    )
-
-    # Format data for the simplified two-stage dashboard
-    dashboard_data = {
-        # Stage 2 is the "main" orbital trajectory
-        "times": raw_data["s2_times"],
-        "positions": raw_data["s2_positions"],
-        "velocities": raw_data["s2_velocities"],
-        "altitudes": raw_data["s2_altitudes"],
-        "s2_phases": raw_data["s2_phases"],
-        # Stage 1 booster (ascent + RTLS)
-        "s1_times": s1_all_times,
-        "s1_positions": s1_all_positions,
-        "s1_velocities": s1_all_velocities,
-        "s1_altitudes": s1_all_altitudes,
-        "s1_phases": s1_all_phases,
-    }
-    # Also include launch site for ground-frame view
-    ground_data = {
-        "times": raw_data["s2_times"],
-        "positions": raw_data["s2_positions"],
-        "s1_times": s1_all_times,
-        "s1_positions": s1_all_positions,
-        "launch_site_eci": raw_data["landing_site_eci"],
-    }
-
-    fig_dashboard = plot_two_stage_dashboard(
-        dashboard_data,
-        title="🚀 Two-Stage RTLS – Booster & Upper Stage",
-    )
-    output_path = "outputs/two_stage_rtls_dashboard.html"
-    fig_dashboard.write_html(output_path)
-
-    fig_ground = plot_rtls_ground_track(
-        ground_data,
-        title="🚀 Two-Stage RTLS – Ground Frame View",
-    )
-    output_ground = "outputs/two_stage_rtls_ground.html"
-    fig_ground.write_html(output_ground)
-
-    print(f"  Saved dashboard to: {output_path}")
-    print(f"  Saved ground-frame view to: {output_ground}")
-    print("\nOpening visualizations in browser...")
-    fig_dashboard.show()
-    fig_ground.show()
+    print("\nView the flight at: http://localhost:5173 (run 'cd web && bun run dev')")
 

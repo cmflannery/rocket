@@ -11,8 +11,8 @@ Available algorithms:
 
 from flight.guidance.first_stage_landing import (
     FirstStageLandingGuidance,
-    FirstStageLandingPhase,
     LandingCommand,
+    LandingPhase,
 )
 from flight.guidance.gravity_turn import GravityTurnGuidance, GuidanceCommand
 from flight.guidance.orbital_insertion import (
@@ -23,7 +23,7 @@ from flight.guidance.orbital_insertion import (
 
 __all__ = [
     "FirstStageLandingGuidance",
-    "FirstStageLandingPhase",
+    "LandingPhase",
     "GravityTurnGuidance",
     "GuidanceCommand",
     "InsertionCommand",

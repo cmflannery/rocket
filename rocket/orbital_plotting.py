@@ -2036,7 +2036,7 @@ def plot_two_stage_dashboard(
         s1_marker_size = 15 if s1_is_burn else 9
         s1_marker_symbol = "cross" if s1_is_burn else "diamond"
         s1_text = ["🔥 BURN"] if s1_is_burn else [""]
-        
+
         phase_icon = "🔥 " if s1_is_burn else ""
 
         telemetry_text = (

@@ -10,11 +10,14 @@ Reference:
     IEEE Transactions on Control Systems Technology.
 """
 
-from dataclasses import dataclass, field
-import numpy as np
+from dataclasses import dataclass
+
 import cvxpy as cp
+import numpy as np
 from numpy.typing import NDArray
+
 from rocket.dynamics.state import State
+
 
 @dataclass
 class PoweredDescentGuidance:
@@ -36,11 +39,11 @@ class PoweredDescentGuidance:
     max_thrust: float
     min_throttle: float = 0.4
     dry_mass: float = 25000.0
-    glideslope_angle: float = np.radians(80.0)  # Relaxed steep approach
+    glideslope_angle: float = np.radians(30.0)  # Very relaxed for RTLS (60° from vertical allowed)
     pointing_limit: float = np.radians(30.0)    # Relaxed thrust tilt
     time_horizon_guess: float = 25.0 # Starting guess
     nodes: int = 30
-    
+
     # Internal cache
     _last_trajectory: dict = None
     _solved: bool = False
@@ -69,21 +72,22 @@ class PoweredDescentGuidance:
                 tf_guess = v0_mag / a_net * 1.2 # Add 20% margin
             else:
                 tf_guess = 30.0
-                
+
             tf_guess = max(10.0, min(tf_guess, 60.0))
 
         # Try a range of time horizons around the guess
-        time_guesses = [tf_guess, tf_guess*1.2, tf_guess*0.8, tf_guess*1.5]
-        
+        time_guesses = [tf_guess, tf_guess*1.5, tf_guess*2.0]
+
         for tf in time_guesses:
             try:
                 traj = self._solve_single(state, tf)
                 if traj is not None:
                     return traj
-            except Exception as e:
+            except Exception:
                 pass
-                
-        print(f"All optimization attempts failed for landing guidance.")
+
+        # Optimization failed - likely physically infeasible trajectory
+        # This usually means boostback didn't bring us close enough to the pad
         return None
 
     def _solve_single(self, state: State, tf: float) -> dict | None:
@@ -103,7 +107,7 @@ class PoweredDescentGuidance:
         m0 = state.mass
         r0 = state.position
         v0 = state.velocity
-        
+
         # Gravity vector
         r_target_norm = np.linalg.norm(self.target_position)
         g_mag = 9.81
@@ -128,7 +132,7 @@ class PoweredDescentGuidance:
         avg_thrust = self.max_thrust * 0.7
         mdot_est = avg_thrust * alpha
         m_arr = np.linspace(m0, m0 - mdot_est * tf, N)
-        
+
         for k in range(N - 1):
             # Position: r[k+1] = r[k] + v[k]*dt + 0.5*(g + u[k]/m)*dt^2
             constraints += [
@@ -140,24 +144,12 @@ class PoweredDescentGuidance:
             ]
 
         # 4. Control Constraints
-        up = -g_vec / np.linalg.norm(g_vec)
-        cone_angle = np.pi/2 - self.glideslope_angle
-        tan_cone = np.tan(cone_angle)
-
         for k in range(N):
             # Max Thrust
             constraints += [cp.norm(u[k]) <= self.max_thrust]
-            
-            # Glide Slope
-            rel_pos = r[k] - self.target_position
-            v_dist = rel_pos @ up
-            # h_vec = rel_pos - v_dist * up (scalar * vector)
-            h_vec = rel_pos - cp.vstack([v_dist]*3).T @ up.reshape(1,3) # Correct matrix mult for cvxpy
-            
-            constraints += [
-                cp.norm(h_vec) <= tan_cone * v_dist,
-                v_dist >= 0 # Must be above ground
-            ]
+
+            # Min Thrust (avoid zero thrust which can cause numerical issues)
+            constraints += [cp.norm(u[k]) >= self.max_thrust * self.min_throttle * 0.1]
 
         # --- Objective ---
         # Minimize fuel (norm u)
@@ -165,15 +157,11 @@ class PoweredDescentGuidance:
 
         # --- Solve ---
         prob = cp.Problem(objective, constraints)
-        
+
         try:
-            # Use OSQP as it is robust
-            prob.solve(solver=cp.OSQP, verbose=False)
-        except:
-            try:
-                prob.solve(solver=cp.ECOS, verbose=False)
-            except:
-                return None
+            prob.solve(solver=cp.CLARABEL, verbose=False)
+        except Exception:
+            return None
 
         if prob.status not in ["optimal", "optimal_inaccurate"]:
             return None
@@ -205,27 +193,27 @@ class PoweredDescentGuidance:
                     else:
                         direction = state.position / np.linalg.norm(state.position)
                     return {"thrust": self.max_thrust, "direction": direction}
-        
+
         traj = self._last_trajectory
-        
+
         # Find current time index
         t_plan = traj["time"] - traj["time"][0]
-        
+
         if time_since_start >= t_plan[-1]:
             return {"thrust": 0.0, "direction": np.array([0,0,1])}
-            
+
         # Interpolate
         u_current = np.zeros(3)
         for i in range(3):
             u_current[i] = np.interp(time_since_start, t_plan, traj["thrust"][:, i])
-            
+
         thrust_mag = np.linalg.norm(u_current)
-        
+
         if thrust_mag > 1.0:
             direction = u_current / thrust_mag
         else:
             direction = state.position / np.linalg.norm(state.position)
-            
+
         return {
             "thrust": thrust_mag,
             "direction": direction
