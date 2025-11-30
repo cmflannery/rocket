@@ -21,7 +21,8 @@ from numpy.typing import NDArray
 
 from flight.guidance.gfold import GFOLDGuidance
 from rocket.dynamics.state import State
-from rocket.environment.gravity import R_EARTH_EQ
+from rocket.environment.atmosphere import density_at_altitude
+from rocket.environment.gravity import MU_EARTH, R_EARTH_EQ
 from rocket.orbital import OMEGA_EARTH
 
 
@@ -70,6 +71,9 @@ class FirstStageLandingGuidance:
     _last_gfold_check: float = field(default=0.0)
     _gfold_check_interval: float = field(default=5.0)  # Check every 5 seconds
     _current_target_eci: NDArray[np.float64] | None = field(default=None)
+    _last_prediction_time: float = field(default=-100.0)
+    _current_boostback_dir: NDArray[np.float64] | None = field(default=None)
+
 
     def __post_init__(self):
         # Initialize G-FOLD for landing
@@ -196,22 +200,12 @@ class FirstStageLandingGuidance:
 
         elif self._phase == LandingPhase.BOOSTBACK:
             # Boostback complete when:
-            # 1. Moving toward site fast enough to reach it, OR
+            # 1. Predictive guidance in _boostback_command determines we are on target
             # 2. Burned for too long (safety limit)
-
-            # Estimate required return speed based on trajectory
-            # Simple model: need to cover horizontal distance while falling
-            g = 9.81
-            t_fall_est = np.sqrt(2 * max(v_dist, 1000) / g) * 1.5  # Time to fall with margin
-            required_speed = h_dist / max(t_fall_est, 10.0)
-
-            # Add margin
-            target_speed = required_speed * 1.2
-            target_speed = np.clip(target_speed, 400.0, 1500.0)
 
             time_since_boostback = state.time - self._boostback_start_time
 
-            if v_toward >= target_speed or time_since_boostback > 200.0:
+            if time_since_boostback > 60.0:
                 self._phase = LandingPhase.COAST
 
         elif self._phase == LandingPhase.COAST:
@@ -220,7 +214,7 @@ class FirstStageLandingGuidance:
 
             # Use simple heuristic for landing burn timing instead of solving G-FOLD every step
             # Start landing burn when we need to decelerate to land safely
-            # Rough estimate: need to kill vertical velocity before hitting ground
+            # Rough estimate: need to kill velocity before hitting ground
             # v^2 = 2 * a * h => h = v^2 / (2*a)
             # With a = (T/m - g), we can estimate required altitude to start burn
             
@@ -229,10 +223,13 @@ class FirstStageLandingGuidance:
             a_max = self.max_thrust / state.mass - g  # Net deceleration
             
             if a_max > 0:
-                # Height needed to stop from current vertical speed
-                stopping_height = (v_radial ** 2) / (2 * a_max) if v_radial < 0 else 0
+                # Use total speed for energy management (safer than just vertical)
+                # We need to kill BOTH vertical and horizontal velocity
+                speed = np.linalg.norm(state.velocity)
+                stopping_height = (speed ** 2) / (2 * a_max)
+                
                 # Add margin
-                trigger_alt = stopping_height * 2.0 + 5000  # 2x margin + 5km buffer
+                trigger_alt = stopping_height * 1.5 + 2000  # 1.5x margin + 2km buffer
                 
                 if alt < trigger_alt and alt < 50000:  # Allow starting G-FOLD higher
                     self._phase = LandingPhase.DESCENT
@@ -321,10 +318,81 @@ class FirstStageLandingGuidance:
         q = np.array([w, x, y, z])
         return q / np.linalg.norm(q)
 
+    def predict_impact_point(self, state: State) -> tuple[NDArray[np.float64], NDArray[np.float64], float]:
+        """Predict impact point and time accounting for drag and gravity.
+        
+        Returns:
+            (impact_position_eci, impact_velocity_eci, impact_time)
+        """
+        # Use coarse integration for speed
+        dt = 5.0  # 5 second steps
+        pos = state.position.copy()
+        vel = state.velocity.copy()
+        t = state.time
+        
+        # Physics constants
+        mass = state.mass  # Assume constant mass (coast)
+        area = 10.8  # m^2 (approx Falcon 9)
+        Cd = 0.5     # Match simulation Cd0
+        
+        max_steps = 200  # 1000 seconds max prediction
+        
+        for _ in range(max_steps):
+            r_sq = np.dot(pos, pos)
+            r = np.sqrt(r_sq)
+            alt = r - R_EARTH_EQ
+            
+            if alt <= 0:
+                break
+                
+            # Gravity
+            g_vec = -pos / r * (MU_EARTH / r_sq)
+            
+            # Drag
+            speed = np.linalg.norm(vel)
+            if speed > 1.0 and alt < 100000:
+                # Only compute drag in atmosphere
+                rho = density_at_altitude(alt)
+                q = 0.5 * rho * speed**2
+                drag_force = q * area * Cd
+                drag_acc = -drag_force / mass * (vel / speed)
+            else:
+                drag_acc = np.zeros(3)
+                
+            # Update (Euler)
+            acc = g_vec + drag_acc
+            vel += acc * dt
+            pos += vel * dt
+            t += dt
+            
+        return pos, vel, t
+
+    def _get_target_at_time(self, time: float) -> NDArray[np.float64]:
+        """Get landing target ECI position at specific time."""
+        theta = OMEGA_EARTH * time
+        c, s = np.cos(theta), np.sin(theta)
+        
+        x0, y0, z0 = self.initial_landing_site_eci
+        
+        x = x0 * c - y0 * s
+        y = x0 * s + y0 * c
+        z = z0
+        
+        return np.array([x, y, z])
+
     def _coast_command(self, state: State) -> LandingCommand:
         """Coast phase - point retrograde for next burn."""
         vel = state.velocity
         speed = np.linalg.norm(vel)
+        
+        # Check for Entry Burn trigger using prediction (every 5 seconds)
+        if self._phase == LandingPhase.COAST and state.time - self._last_prediction_time > 5.0:
+             impact_pos, impact_vel, impact_time = self.predict_impact_point(state)
+             # If impact speed is too high, trigger entry burn early?
+             # For now, keep the simple altitude/speed trigger in _update_phase, 
+             # but we could use prediction here to be smarter.
+             self._last_prediction_time = state.time
+        
         if speed > 10.0:
             direction = -vel / speed
         else:
@@ -339,24 +407,57 @@ class FirstStageLandingGuidance:
         )
 
     def _boostback_command(self, state: State) -> LandingCommand:
-        """Boostback burn - thrust toward landing site horizontally."""
-        # Get radial direction
-        r_hat = state.position / np.linalg.norm(state.position)
+        """Boostback burn - predictive guidance to target."""
+        
+        # Rate limit the expensive prediction (every 1.0 seconds)
+        if state.time - self._last_prediction_time > 1.0 or self._current_boostback_dir is None:
+            # Predict where we land if we stop burning now
+            impact_pos, impact_vel, impact_time = self.predict_impact_point(state)
+            
+            # Where should we land?
+            target_pos = self._get_target_at_time(impact_time)
+            
+            # Error vector (Target - Impact)
+            error = target_pos - impact_pos
+            
+            # Horizontal error (project onto local horizontal plane at current position)
+            # We want to correct the trajectory so impact matches target.
+            r_hat = state.position / np.linalg.norm(state.position)
+            
+            # Project error onto horizontal plane
+            error_horiz = error - np.dot(error, r_hat) * r_hat
+            error_dist = np.linalg.norm(error_horiz)
+            
+            # If error is large, thrust towards the error (to push impact point that way)
+            # Note: If impact is "left" of target, error is "right". Thrusting "right" moves impact "right".
+            if error_dist > 500.0:  # 500m tolerance
+                thrust_dir = error_horiz / error_dist
+                
+                # Remove artificial loft - let the natural trajectory do the work
+                # The rocket is already high enough at separation
+                
+                self._current_boostback_dir = thrust_dir
+            else:
+                # Close enough - stop burning
+                self._current_boostback_dir = None
+                self._phase = LandingPhase.COAST
+                
+            self._last_prediction_time = state.time
 
-        # Direction to landing site (horizontal only)
-        to_site = self.landing_site_eci - state.position
-        to_site_horiz = to_site - np.dot(to_site, r_hat) * r_hat
-        to_site_mag = np.linalg.norm(to_site_horiz)
-
-        if to_site_mag > 100:
-            thrust_dir = to_site_horiz / to_site_mag
+        # Use cached direction or default to Up if done
+        if self._current_boostback_dir is not None:
+            thrust = self.max_thrust
+            thrust_dir = self._current_boostback_dir
         else:
-            # Very close - just point up
-            thrust_dir = r_hat
+            thrust = 0.0
+            thrust_dir = state.position / np.linalg.norm(state.position)
+            # Ensure phase is COAST (redundant but safe)
+            if self._phase == LandingPhase.BOOSTBACK:
+                self._phase = LandingPhase.COAST
 
         attitude = self._direction_to_quaternion(state, thrust_dir)
         return LandingCommand(
-            thrust=self.max_thrust,
+            thrust=thrust,
             target_attitude=attitude,
             phase=self._phase.value,
             target_position=self.landing_site_eci,

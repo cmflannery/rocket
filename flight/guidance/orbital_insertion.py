@@ -263,11 +263,9 @@ class OrbitalInsertionGuidance:
             v_circular = _compute_circular_velocity(self.target_altitude)
             speed = np.linalg.norm(state.velocity)
 
-            speed_close = abs(speed - v_circular) < 30.0  # tighter band
-            apogee_close = abs(apogee - self.target_altitude) < 10_000.0  # 10 km
-            altitude_ok = alt > 0.8 * self.target_altitude
-
-            if speed_close and apogee_close and altitude_ok:
+            # Cutoff if we have reached or exceeded circular velocity
+            # or if apogee is blowing up (indicating we passed circular)
+            if speed >= v_circular or apogee > self.target_altitude + 20000:
                 self._phase = OrbitalInsertionPhase.ORBIT
 
     def _ascent_command(self, state: State, alt: float, apogee: float) -> InsertionCommand:

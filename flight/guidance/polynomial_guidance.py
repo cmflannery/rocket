@@ -187,3 +187,4 @@ class PolynomialGuidance:
             t_down = np.sqrt(2 * alt_apex / g)
             return t_up + t_down
 
+

@@ -37,6 +37,7 @@ from numpy.typing import NDArray
 
 from rocket.dynamics.state import State
 from rocket.environment.gravity import R_EARTH_EQ
+from rocket.orbital import OMEGA_EARTH
 
 # =============================================================================
 # Guidance Output
@@ -90,6 +91,7 @@ class GravityTurnGuidance:
     vertical_rise_time: float = 10.0
     pitch_kick_duration: float = 10.0
     pitch_kick_angle: float = np.radians(5.0)
+    launch_azimuth: float = np.radians(90.0)  # Azimuth from North [rad]
     throttle: float = 1.0
 
     # Internal state
@@ -165,32 +167,47 @@ class GravityTurnGuidance:
             kick_progress = (state.time - kick_start) / self.pitch_kick_duration
             kick_progress = np.clip(kick_progress, 0.0, 1.0)
 
-            # Kick direction: perpendicular to radial, in velocity plane
-            # Use current horizontal velocity direction, or East if no velocity
-            v_horiz = vel - np.dot(vel, r_hat) * r_hat
-            v_horiz_mag = np.linalg.norm(v_horiz)
-
-            if v_horiz_mag > 10.0:
-                kick_dir = v_horiz / v_horiz_mag
+            # Kick direction: Based on launch azimuth
+            # North is roughly Z cross R in ECI? No, Z is North Pole.
+            # East = (0,0,1) x r_hat
+            # North = r_hat x East
+            z_axis = np.array([0.0, 0.0, 1.0])
+            
+            # Local East vector
+            east = np.cross(z_axis, r_hat)
+            east_mag = np.linalg.norm(east)
+            if east_mag < 1e-6:
+                # At pole - arbitrary
+                east = np.array([1.0, 0.0, 0.0])
             else:
-                # Default to prograde (east for typical launch)
-                if state.flat_earth:
-                    kick_dir = np.array([1.0, 0.0, 0.0])
-                else:
-                    z_eci = np.array([0.0, 0.0, 1.0])
-                    east = np.cross(z_eci, r_hat)
-                    east_mag = np.linalg.norm(east)
-                    kick_dir = east / east_mag if east_mag > 0.01 else np.array([1.0, 0.0, 0.0])
+                east = east / east_mag
+                
+            # Local North vector
+            north = np.cross(r_hat, east)
+            
+            # Target kick direction based on azimuth (measured from North)
+            # kick_dir = North * cos(az) + East * sin(az)
+            c_az = np.cos(self.launch_azimuth)
+            s_az = np.sin(self.launch_azimuth)
+            
+            kick_dir = north * c_az + east * s_az
+            kick_dir = kick_dir / np.linalg.norm(kick_dir)
 
             # Blend from vertical to kicked
             kick_angle = self.pitch_kick_angle * kick_progress
             target = np.cos(kick_angle) * r_hat + np.sin(kick_angle) * kick_dir
             return target / np.linalg.norm(target)
 
-        else:  # Phase 3 or 4 - Gravity turn (follow velocity)
-            speed = np.linalg.norm(vel)
-            if speed > 50.0:
-                return vel / speed
+        else:  # Phase 3 or 4 - Gravity turn (follow relative velocity)
+            # Use velocity relative to rotating Earth (ECEF velocity)
+            # This ensures we fly a constant heading relative to the ground (approx)
+            # and accounts for Earth rotation naturally.
+            omega = np.array([0.0, 0.0, OMEGA_EARTH])
+            v_rel = vel - np.cross(omega, pos)
+            
+            speed_rel = np.linalg.norm(v_rel)
+            if speed_rel > 10.0:
+                return v_rel / speed_rel
             else:
                 # Low velocity - maintain current direction
                 return r_hat

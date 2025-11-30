@@ -55,8 +55,8 @@ def run_two_stage_mission():
     # =========================================================================
     LAUNCH_LAT = 28.5       # Cape Canaveral [deg]
     LAUNCH_LON = -80.6      # [deg]
-    TARGET_ALT = 300e3      # 300 km target circular orbit [m]
-    TARGET_INC = 28.5       # Match launch latitude [deg]
+    TARGET_ALT = 420e3      # 420 km target circular orbit (ISS) [m]
+    TARGET_INC = 51.6       # ISS Inclination [deg]
 
     # Staging parameters (Falcon 9-like)
     STAGE_1_BURN_TIME = 162.0  # First stage burns for ~2.5 minutes
@@ -92,8 +92,8 @@ def run_two_stage_mission():
     print("MISSION PARAMETERS")
     print("-" * 70)
     print(f"  Launch site: {LAUNCH_LAT}°N, {LAUNCH_LON}°E")
-    print(f"  Target orbit: {TARGET_ALT/1000:.0f} km circular")
-    print(f"  Target inclination: {TARGET_INC}°")
+    print(f"  Target orbit: {TARGET_ALT/1000:.0f} km circular (ISS)")
+    print(f"  Target inclination: {TARGET_INC}° (ISS)")
     print(f"  Required orbital velocity: {compute_circular_velocity(TARGET_ALT):.0f} m/s")
 
     print("\n  STAGE 1:")
@@ -118,9 +118,29 @@ def run_two_stage_mission():
     print("INITIALIZING SIMULATION")
     print("-" * 70)
 
-    # Compute launch azimuth
-    az = launch_azimuth(np.radians(LAUNCH_LAT), np.radians(TARGET_INC))
-    print(f"  Launch azimuth: {np.degrees(az):.1f}° from North")
+    # Compute launch azimuth (Inertial)
+    az_inertial = launch_azimuth(np.radians(LAUNCH_LAT), np.radians(TARGET_INC))
+    
+    # Correct for Earth rotation to get Launch Heading
+    # V_inertial = V_rocket + V_earth
+    # We want V_inertial to have azimuth az_inertial
+    # V_earth is East (90 deg)
+    v_orbit = compute_circular_velocity(TARGET_ALT)
+    v_earth = 465.1 * np.cos(np.radians(LAUNCH_LAT))  # Earth rotation speed at launch lat
+    
+    # Inertial velocity components required
+    vx_inertial = v_orbit * np.sin(az_inertial)  # East
+    vy_inertial = v_orbit * np.cos(az_inertial)  # North
+    
+    # Required rocket velocity components (relative to Earth)
+    vx_rocket = vx_inertial - v_earth
+    vy_rocket = vy_inertial
+    
+    # Launch Heading
+    az_heading = np.arctan2(vx_rocket, vy_rocket)
+    
+    print(f"  Inertial Azimuth: {np.degrees(az_inertial):.1f}°")
+    print(f"  Launch Heading:   {np.degrees(az_heading):.1f}° (Rotational Correction)")
 
     config = SimConfig(gravity_model=GravityModel.SPHERICAL, include_atmosphere=True)
 
@@ -133,7 +153,7 @@ def run_two_stage_mission():
     sim = Simulator.from_launch_pad(
         latitude=LAUNCH_LAT,
         longitude=LAUNCH_LON,
-        heading=np.degrees(az),
+        heading=np.degrees(az_heading),
         vehicle_mass=TOTAL_MASS,
         inertia=inertia,
         config=config,
@@ -152,6 +172,7 @@ def run_two_stage_mission():
         vertical_rise_time=45.0,   # Extended vertical rise to build altitude
         pitch_kick_duration=45.0,  # Very gradual pitch over
         pitch_kick_angle=np.radians(35.0),  # Pitch over to start gravity turn
+        launch_azimuth=az_heading,  # Use corrected heading
     )
 
     # =========================================================================
@@ -354,10 +375,29 @@ def run_two_stage_mission():
                 # Use ECI speed directly (more reliable near ground)
                 s1_final_speed = np.linalg.norm(s1_state.velocity)
                 s1_landed = s1_final_speed < 100  # Need to stop relative to rotating Earth
+                
+                # Calculate distance to target
+                target_pos = s1_landing_guidance.landing_site_eci
+                # Project current position onto surface for fair comparison (ignore altitude error < 0)
+                current_pos = s1_state.position
+                
+                # Distance in 3D
+                dist_3d = np.linalg.norm(current_pos - target_pos)
+                
+                # Horizontal distance (projected onto local horizontal plane at target)
+                r_hat = target_pos / np.linalg.norm(target_pos)
+                rel_pos = current_pos - target_pos
+                v_dist = np.dot(rel_pos, r_hat)
+                h_vec = rel_pos - v_dist * r_hat
+                h_dist = np.linalg.norm(h_vec)
+
                 if s1_landed:
-                    print(f"\n  ✓ Stage 1 LANDED at T+{s1_state.time:.1f}s (speed: {s1_final_speed:.1f} m/s ECI)")
+                    print(f"\n  ✓ Stage 1 LANDED at T+{s1_state.time:.1f}s")
                 else:
-                    print(f"\n  ✗ Stage 1 IMPACT at T+{s1_state.time:.1f}s (speed: {s1_final_speed:.1f} m/s ECI)")
+                    print(f"\n  ✗ Stage 1 IMPACT at T+{s1_state.time:.1f}s")
+                
+                print(f"    Speed: {s1_final_speed:.1f} m/s ECI")
+                print(f"    Distance to Target: {h_dist:.1f} m (Horizontal), {dist_3d:.1f} m (3D)")
                 continue
 
             s1_cmd = s1_landing_guidance.compute(s1_state)
